@@ -24,6 +24,7 @@ constexpr wchar_t ProductName[] = L"MiraView";
 constexpr WORD AppIconResource = 101;
 constexpr UINT_PTR NoticeTimer = 1;
 constexpr UINT_PTR EnhancementResizeTimer = 2;
+constexpr int LayoutSettingsVersion = 4;
 
 enum Command : UINT {
     CommandOpen = 100,
@@ -32,22 +33,31 @@ enum Command : UINT {
     CommandFit,
     CommandFitWidth,
     CommandActual,
+    CommandMaximize,
     CommandFullscreen,
     CommandToggleInfo,
     CommandRtx,
+    CommandHdrPreview,
     CommandWheelNavigate,
     CommandWheelZoom,
     CommandFirst,
     CommandLast,
     CommandAbout,
+    CommandLanguageChinese,
+    CommandLanguageEnglish,
     CommandExit
 };
 
-std::wstring ViewModeName(const ViewMode mode) {
+const wchar_t* UiText(
+    const bool english, const wchar_t* traditionalChinese, const wchar_t* englishText) {
+    return english ? englishText : traditionalChinese;
+}
+
+std::wstring ViewModeName(const ViewMode mode, const bool english) {
     switch (mode) {
-    case ViewMode::FitWidth: return L"適合寬度";
-    case ViewMode::ActualSize: return L"原始大小";
-    default: return L"適合視窗";
+    case ViewMode::FitWidth: return UiText(english, L"適合寬度", L"Fit width");
+    case ViewMode::ActualSize: return UiText(english, L"原始大小", L"Actual size");
+    default: return UiText(english, L"適合視窗", L"Fit window");
     }
 }
 
@@ -70,11 +80,15 @@ App::~App() = default;
 
 int App::Run(const HINSTANCE instance, const std::filesystem::path& initialFile) {
     if (!CreateDeviceIndependentResources() || !CreateMainWindow(instance)) {
-        MessageBoxW(nullptr, L"無法初始化 MiraView。", ProductName, MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr,
+            L"無法初始化 MiraView。\n\nMiraView could not be initialized.",
+            ProductName, MB_OK | MB_ICONERROR);
         return 1;
     }
 
     LoadSettings();
+    mainMenu_ = CreateApplicationMenu();
+    if (mainMenu_) SetMenu(window_, mainMenu_);
     UpdateMenuChecks();
     ShowWindow(window_, SW_SHOW);
     UpdateWindow(window_);
@@ -104,12 +118,21 @@ bool App::CreateMainWindow(const HINSTANCE instance) {
     windowClass.lpszClassName = WindowClassName;
     if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return false;
 
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY), &monitor);
+    constexpr int initialWidth = 960;
+    constexpr int initialHeight = 640;
+    const int initialX = monitor.rcWork.left +
+        (monitor.rcWork.right - monitor.rcWork.left - initialWidth) / 2;
+    const int initialY = monitor.rcWork.top +
+        (monitor.rcWork.bottom - monitor.rcWork.top - initialHeight) / 2;
     window_ = CreateWindowExW(
         WS_EX_ACCEPTFILES, WindowClassName, ProductName, WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1280, 820, nullptr, nullptr, instance, this);
+        initialX, initialY, initialWidth, initialHeight,
+        nullptr, nullptr, instance, this);
     if (!window_) return false;
-    mainMenu_ = CreateApplicationMenu();
-    if (mainMenu_) SetMenu(window_, mainMenu_);
     DragAcceptFiles(window_, TRUE);
     cache_.SetNotificationWindow(window_);
     enhancementWorker_ = std::make_unique<EnhancementWorker>(*enhancer_, window_);
@@ -117,6 +140,7 @@ bool App::CreateMainWindow(const HINSTANCE instance) {
 }
 
 HMENU App::CreateApplicationMenu() {
+    const bool english = IsEnglish();
     HMENU root = CreateMenu();
     HMENU fileMenu = CreatePopupMenu();
     HMENU navigateMenu = CreatePopupMenu();
@@ -124,41 +148,80 @@ HMENU App::CreateApplicationMenu() {
     wheelMenu_ = CreatePopupMenu();
     rtxMenu_ = CreatePopupMenu();
     HMENU helpMenu = CreatePopupMenu();
-    if (!root || !fileMenu || !navigateMenu || !viewMenu_ || !wheelMenu_ || !rtxMenu_ || !helpMenu) return root;
+    languageMenu_ = CreatePopupMenu();
+    if (!root || !fileMenu || !navigateMenu || !viewMenu_ || !wheelMenu_ ||
+        !rtxMenu_ || !helpMenu || !languageMenu_) return root;
 
-    AppendMenuW(fileMenu, MF_STRING, CommandOpen, L"開啟圖片…\tO");
+    AppendMenuW(fileMenu, MF_STRING, CommandOpen,
+        UiText(english, L"開啟圖片…\tO", L"Open image…\tO"));
     AppendMenuW(fileMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(fileMenu, MF_STRING, CommandExit, L"結束\tAlt+F4");
+    AppendMenuW(fileMenu, MF_STRING, CommandExit,
+        UiText(english, L"結束\tAlt+F4", L"Exit\tAlt+F4"));
 
-    AppendMenuW(navigateMenu, MF_STRING, CommandPrevious, L"上一張\t←");
-    AppendMenuW(navigateMenu, MF_STRING, CommandNext, L"下一張\t→");
+    AppendMenuW(navigateMenu, MF_STRING, CommandPrevious,
+        UiText(english, L"上一張\t←", L"Previous\t←"));
+    AppendMenuW(navigateMenu, MF_STRING, CommandNext,
+        UiText(english, L"下一張\t→", L"Next\t→"));
     AppendMenuW(navigateMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(navigateMenu, MF_STRING, CommandFirst, L"第一張\tHome");
-    AppendMenuW(navigateMenu, MF_STRING, CommandLast, L"最後一張\tEnd");
+    AppendMenuW(navigateMenu, MF_STRING, CommandFirst,
+        UiText(english, L"第一張\tHome", L"First\tHome"));
+    AppendMenuW(navigateMenu, MF_STRING, CommandLast,
+        UiText(english, L"最後一張\tEnd", L"Last\tEnd"));
 
-    AppendMenuW(viewMenu_, MF_STRING, CommandFit, L"適合視窗\t1");
-    AppendMenuW(viewMenu_, MF_STRING, CommandFitWidth, L"適合寬度\t2");
-    AppendMenuW(viewMenu_, MF_STRING, CommandActual, L"原始大小（100%）\t3");
+    AppendMenuW(viewMenu_, MF_STRING, CommandFit,
+        UiText(english, L"適合視窗\t1", L"Fit window\t1"));
+    AppendMenuW(viewMenu_, MF_STRING, CommandFitWidth,
+        UiText(english, L"適合寬度\t2", L"Fit width\t2"));
+    AppendMenuW(viewMenu_, MF_STRING, CommandActual,
+        UiText(english, L"原始大小（100%）\t3", L"Actual size (100%)\t3"));
     AppendMenuW(viewMenu_, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(viewMenu_, MF_STRING, CommandFullscreen, L"全螢幕\tF11");
-    AppendMenuW(viewMenu_, MF_STRING, CommandToggleInfo, L"顯示資訊列\tI");
+    AppendMenuW(viewMenu_, MF_STRING, CommandMaximize,
+        UiText(english, L"視窗最大化\tM", L"Maximize window\tM"));
+    AppendMenuW(viewMenu_, MF_STRING, CommandFullscreen,
+        UiText(english, L"無邊框全螢幕\tF11", L"Borderless fullscreen\tF11"));
+    AppendMenuW(viewMenu_, MF_STRING, CommandToggleInfo,
+        UiText(english, L"顯示資訊列\tI", L"Show information bar\tI"));
     AppendMenuW(viewMenu_, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(wheelMenu_, MF_STRING, CommandWheelNavigate, L"上一張／下一張");
-    AppendMenuW(wheelMenu_, MF_STRING, CommandWheelZoom, L"放大／縮小");
-    AppendMenuW(viewMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(wheelMenu_), L"滑鼠滾輪");
+    AppendMenuW(wheelMenu_, MF_STRING, CommandWheelNavigate,
+        UiText(english, L"上一張／下一張", L"Previous/Next"));
+    AppendMenuW(wheelMenu_, MF_STRING, CommandWheelZoom,
+        UiText(english, L"放大／縮小", L"Zoom in/out"));
+    AppendMenuW(viewMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(wheelMenu_),
+        UiText(english, L"滑鼠滾輪", L"Mouse wheel"));
 
-    AppendMenuW(rtxMenu_, MF_STRING, CommandRtx, L"啟用 RTX Video VSR\tR");
+    AppendMenuW(rtxMenu_, MF_STRING, CommandRtx,
+        UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
+    AppendMenuW(rtxMenu_, MF_STRING, CommandHdrPreview,
+        UiText(english, L"RTX 視訊增強(VSR + HDR)…\tH", L"RTX Video Enhancement (VSR + HDR)…\tH"));
     AppendMenuW(rtxMenu_, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0, L"品質：Ultra（4）");
-    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0, L"輸出：依顯示尺寸（最高 7680 px）");
+    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
+        UiText(english, L"HDR：請確保 Windows 與螢幕已開啟 HDR",
+            L"HDR: Enable HDR in Windows and on the display"));
+    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
+        UiText(english, L"品質：Ultra（4）", L"Quality: Ultra (4)"));
+    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
+        UiText(english, L"輸出：依顯示尺寸（最高 7680 px）",
+            L"Output: Display-sized (7680 px maximum)"));
+    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
+        UiText(english, L"按住 C：顯示原圖比較", L"Hold C: Compare original"));
 
-    AppendMenuW(helpMenu, MF_STRING, CommandAbout, L"關於 MiraView / About MiraView…");
+    AppendMenuW(languageMenu_, MF_STRING, CommandLanguageChinese, L"繁體中文");
+    AppendMenuW(languageMenu_, MF_STRING, CommandLanguageEnglish, L"English");
+    AppendMenuW(helpMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(languageMenu_),
+        UiText(english, L"語言", L"Language"));
+    AppendMenuW(helpMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(helpMenu, MF_STRING, CommandAbout,
+        UiText(english, L"關於 MiraView…", L"About MiraView…"));
 
-    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), L"檔案(&F)");
-    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(navigateMenu), L"瀏覽(&N)");
-    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu_), L"檢視(&V)");
+    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu),
+        UiText(english, L"檔案(&F)", L"File(&F)"));
+    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(navigateMenu),
+        UiText(english, L"瀏覽(&N)", L"Navigate(&N)"));
+    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(viewMenu_),
+        UiText(english, L"檢視(&V)", L"View(&V)"));
     AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(rtxMenu_), L"RTX(&R)");
-    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu), L"說明(&H)");
+    AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(helpMenu),
+        UiText(english, L"說明(&H)", L"Help(&H)"));
     UpdateMenuChecks();
     return root;
 }
@@ -171,6 +234,8 @@ void App::UpdateMenuChecks() {
             MF_BYCOMMAND);
         CheckMenuItem(viewMenu_, CommandFullscreen,
             MF_BYCOMMAND | (fullscreen_ ? MF_CHECKED : MF_UNCHECKED));
+        CheckMenuItem(viewMenu_, CommandMaximize,
+            MF_BYCOMMAND | (IsZoomed(window_) && !fullscreen_ ? MF_CHECKED : MF_UNCHECKED));
         CheckMenuItem(viewMenu_, CommandToggleInfo,
             MF_BYCOMMAND | (showInfo_ ? MF_CHECKED : MF_UNCHECKED));
     }
@@ -183,7 +248,50 @@ void App::UpdateMenuChecks() {
         CheckMenuItem(rtxMenu_, CommandRtx,
             MF_BYCOMMAND | (enhancementEnabled_ ? MF_CHECKED : MF_UNCHECKED));
     }
+    if (languageMenu_) {
+        CheckMenuRadioItem(languageMenu_, CommandLanguageChinese, CommandLanguageEnglish,
+            IsEnglish() ? CommandLanguageEnglish : CommandLanguageChinese,
+            MF_BYCOMMAND);
+    }
     if (window_ && IsWindow(window_)) DrawMenuBar(window_);
+}
+
+void App::SetLanguage(const UiLanguage language) {
+    if (language_ == language) return;
+    language_ = language;
+
+    HMENU oldMenu = mainMenu_;
+    if (!fullscreen_) SetMenu(window_, nullptr);
+    mainMenu_ = nullptr;
+    viewMenu_ = nullptr;
+    wheelMenu_ = nullptr;
+    rtxMenu_ = nullptr;
+    languageMenu_ = nullptr;
+    if (oldMenu) DestroyMenu(oldMenu);
+
+    mainMenu_ = CreateApplicationMenu();
+    if (!fullscreen_ && mainMenu_) SetMenu(window_, mainMenu_);
+    UpdateMenuChecks();
+    UpdateWindowTitle();
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void App::ShowRtxError(const std::wstring& details) {
+    std::wstring message = IsEnglish()
+        ? L"RTX Video Enhancement is unavailable on this computer.\n\n"
+          L"MiraView will continue in normal image-viewing mode and will not close.\n"
+          L"Verify the NVIDIA RTX GPU, compatible driver, and the required runtime DLL files."
+        : L"這台電腦目前無法使用 RTX 視訊增強。\n\n"
+          L"MiraView 會繼續以一般圖片檢視模式運作，不會因此關閉。\n"
+          L"請確認 NVIDIA RTX 顯示卡、相容驅動程式與必要的 runtime DLL。";
+    if (!details.empty()) {
+        message += L"\n\n";
+        message += IsEnglish() ? L"Details: " : L"詳細資訊：";
+        message += details;
+    }
+    MessageBoxW(window_, message.c_str(),
+        UiText(IsEnglish(), L"RTX 視訊增強無法使用", L"RTX Video Enhancement unavailable"),
+        MB_OK | MB_ICONWARNING);
 }
 
 bool App::CreateDeviceIndependentResources() {
@@ -251,16 +359,26 @@ void App::Paint() {
             bitmap_.Get(), destination, 1.0F, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
             D2D1::RectF(0.0F, 0.0F, bitmap_->GetSize().width, bitmap_->GetSize().height));
     } else {
-        const std::wstring primary = loading_ ? L"正在載入圖片…" : L"拖曳圖片到這裡，或按 O 開啟";
+        const bool english = IsEnglish();
+        const std::wstring primary = loading_
+            ? UiText(english, L"正在載入圖片…", L"Loading image…")
+            : UiText(english, L"拖曳圖片到這裡，或按 O 開啟", L"Drop an image here, or press O to open");
         const std::wstring secondary = folder_.Empty()
-            ? L"開啟後會自動索引同一資料夾，並在背景預讀前後頁"
-            : L"圖片解碼中；預讀完成後翻頁會直接顯示";
-        auto primaryRect = D2D1::RectF(40.0F, size.height * 0.5F - 36.0F, size.width - 40.0F, size.height * 0.5F);
-        auto secondaryRect = D2D1::RectF(40.0F, size.height * 0.5F + 2.0F, size.width - 40.0F, size.height * 0.5F + 36.0F);
+            ? UiText(english, L"開啟後會自動索引同一資料夾，並在背景預讀前後頁",
+                L"The folder is indexed automatically and nearby pages are prefetched")
+            : UiText(english, L"圖片解碼中；預讀完成後翻頁會直接顯示",
+                L"Decoding image; prefetched pages appear immediately");
+        const std::wstring rtxHint = UiText(english,
+            L"RTX 視訊增強：建議將視窗最大化，或按 F11 無邊框全螢幕",
+            L"RTX Video Enhancement: Maximize the window or press F11 for borderless fullscreen");
+        auto primaryRect = D2D1::RectF(40.0F, size.height * 0.5F - 54.0F, size.width - 40.0F, size.height * 0.5F - 18.0F);
+        auto secondaryRect = D2D1::RectF(40.0F, size.height * 0.5F - 10.0F, size.width - 40.0F, size.height * 0.5F + 24.0F);
+        auto hintRect = D2D1::RectF(40.0F, size.height * 0.5F + 30.0F, size.width - 40.0F, size.height * 0.5F + 64.0F);
         titleFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
         textFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
         renderTarget_->DrawTextW(primary.c_str(), static_cast<UINT32>(primary.size()), titleFormat_.Get(), primaryRect, textBrush_.Get());
         renderTarget_->DrawTextW(secondary.c_str(), static_cast<UINT32>(secondary.size()), textFormat_.Get(), secondaryRect, mutedBrush_.Get());
+        renderTarget_->DrawTextW(rtxHint.c_str(), static_cast<UINT32>(rtxHint.size()), textFormat_.Get(), hintRect, accentBrush_.Get());
         titleFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
         textFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
     }
@@ -289,14 +407,18 @@ void App::DrawOverlay(const D2D1_SIZE_F& size) {
         textFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
 
         std::wostringstream details;
-        details << ViewModeName(viewMode_) << L"  ·  " << static_cast<int>(std::lround(CurrentScale(size) * 100.0F)) << L"%";
+        const bool english = IsEnglish();
+        details << ViewModeName(viewMode_, english) << L"  ·  " << static_cast<int>(std::lround(CurrentScale(size) * 100.0F)) << L"%";
         if (currentImage_) details << L"  ·  " << currentImage_->width << L" × " << currentImage_->height;
         if (enhancementEnabled_) {
-            if (enhancementInProgress_) details << L"  ·  RTX 處理中";
+            if (enhancementInProgress_) details << UiText(english, L"  ·  RTX 處理中", L"  ·  RTX processing");
+            else if (showOriginalForComparison_ && enhancedImage_) details << UiText(english, L"  ·  RTX 比較：原圖", L"  ·  RTX comparison: Original");
             else if (enhancedImage_) details << L"  ·  RTX " << enhancedImage_->width << L" × " << enhancedImage_->height;
-            else details << L"  ·  RTX 開啟";
+            else details << UiText(english, L"  ·  RTX 開啟", L"  ·  RTX enabled");
         }
-        details << L"  ·  ←/→ 翻頁  Ctrl+滾輪縮放  F11 全螢幕  I 隱藏資訊";
+        details << UiText(english,
+            L"  ·  ←/→ 翻頁  Ctrl+滾輪縮放  M 最大化  F11 全螢幕  I 隱藏資訊",
+            L"  ·  ←/→ pages  Ctrl+wheel zoom  M maximize  F11 fullscreen  I hide info");
         const auto detailsText = details.str();
         renderTarget_->DrawTextW(detailsText.c_str(), static_cast<UINT32>(detailsText.size()), textFormat_.Get(),
             D2D1::RectF(18.0F, size.height - 29.0F, size.width - 18.0F, size.height - 5.0F), mutedBrush_.Get());
@@ -317,11 +439,11 @@ void App::ShowOpenDialog() {
     ComPtr<IFileOpenDialog> dialog;
     if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) return;
     const COMDLG_FILTERSPEC filters[] = {
-        {L"圖片", L"*.jpg;*.jpeg;*.jpe;*.png;*.bmp;*.gif;*.tif;*.tiff;*.webp;*.heic;*.heif;*.avif;*.jxl;*.ico;*.jxr"},
-        {L"所有檔案", L"*.*"}
+        {UiText(IsEnglish(), L"圖片", L"Images"), L"*.jpg;*.jpeg;*.jpe;*.png;*.bmp;*.gif;*.tif;*.tiff;*.webp;*.heic;*.heif;*.avif;*.jxl;*.ico;*.jxr"},
+        {UiText(IsEnglish(), L"所有檔案", L"All files"), L"*.*"}
     };
     dialog->SetFileTypes(static_cast<UINT>(std::size(filters)), filters);
-    dialog->SetTitle(L"開啟圖片");
+    dialog->SetTitle(UiText(IsEnglish(), L"開啟圖片", L"Open image"));
     if (FAILED(dialog->Show(window_))) return;
 
     ComPtr<IShellItem> item;
@@ -333,11 +455,14 @@ void App::ShowOpenDialog() {
 
 bool App::OpenImage(const std::filesystem::path& file) {
     if (!folder_.Open(file)) {
-        SetNotice(L"找不到圖片，或檔案格式不在支援清單中。", 5000);
+        SetNotice(UiText(IsEnglish(),
+            L"找不到圖片，或檔案格式不在支援清單中。",
+            L"The image was not found or its format is unsupported."), 5000);
         return false;
     }
     currentImage_.reset();
     enhancedImage_.reset();
+    showOriginalForComparison_ = false;
     ++enhancementGeneration_;
     bitmap_.Reset();
     zoomFactor_ = 1.0F;
@@ -354,6 +479,7 @@ void App::Navigate(const int delta) {
     if (!folder_.Move(delta)) return;
     currentImage_.reset();
     enhancedImage_.reset();
+    showOriginalForComparison_ = false;
     ++enhancementGeneration_;
     bitmap_.Reset();
     zoomFactor_ = 1.0F;
@@ -369,6 +495,7 @@ void App::NavigateTo(const std::size_t index) {
     if (!folder_.MoveTo(index)) return;
     currentImage_.reset();
     enhancedImage_.reset();
+    showOriginalForComparison_ = false;
     ++enhancementGeneration_;
     bitmap_.Reset();
     zoomFactor_ = 1.0F;
@@ -413,7 +540,7 @@ void App::ApplyCurrentIfReady() {
         const auto error = cache_.ErrorFor(path);
         if (!error.empty()) {
             loading_ = false;
-            SetNotice(L"解碼失敗：" + error, 6000);
+            SetNotice(std::wstring(UiText(IsEnglish(), L"解碼失敗：", L"Decode failed: ")) + error, 6000);
         }
         return;
     }
@@ -473,7 +600,10 @@ void App::ApplyEnhancementResult() {
             enhancementEnabled_ = false;
             UpdateMenuChecks();
         }
-        SetNotice(result.error.empty() ? L"RTX VSR 處理失敗。" : result.error, 7000);
+        const std::wstring details = result.error.empty()
+            ? UiText(IsEnglish(), L"RTX VSR 處理失敗。", L"RTX VSR processing failed.")
+            : result.error;
+        ShowRtxError(details);
         InvalidateRect(window_, nullptr, FALSE);
         return;
     }
@@ -489,6 +619,7 @@ void App::ToggleEnhancement() {
         enhancementEnabled_ = false;
         enhancementInProgress_ = false;
         enhancedImage_.reset();
+        showOriginalForComparison_ = false;
         ++enhancementGeneration_;
         UploadCurrentBitmap();
         UpdateWindowTitle();
@@ -497,24 +628,80 @@ void App::ToggleEnhancement() {
         return;
     }
     if (!enhancer_->IsAvailable()) {
-        SetNotice(enhancer_->Status(), 6000);
+        ShowRtxError(enhancer_->Status());
         return;
     }
     enhancementEnabled_ = true;
     UpdateMenuChecks();
     RequestEnhancement();
+    if (!fullscreen_ && !IsZoomed(window_)) {
+        SetNotice(UiText(IsEnglish(),
+            L"RTX 視訊增強已開啟；建議將視窗最大化，或按 F11 無邊框全螢幕。",
+            L"RTX Video Enhancement enabled; maximize the window or press F11 for borderless fullscreen."), 5000);
+    }
+}
+
+void App::LaunchHdrPreview() {
+    if (!currentImage_) {
+        SetNotice(UiText(IsEnglish(),
+            L"請先開啟一張圖片，再啟動 RTX 視訊增強(VSR + HDR)。",
+            L"Open an image before starting RTX Video Enhancement (VSR + HDR)."), 5000);
+        return;
+    }
+#if MIRAVIEW_WITH_RTX
+    wchar_t executablePath[32768]{};
+    if (GetModuleFileNameW(nullptr, executablePath, static_cast<DWORD>(std::size(executablePath))) == 0) {
+        ShowRtxError(UiText(IsEnglish(),
+            L"找不到 MiraView 程式路徑。", L"The MiraView executable path could not be found."));
+        return;
+    }
+    const auto applicationDirectory = std::filesystem::path(executablePath).parent_path();
+    const auto previewPath = applicationDirectory / L"MiraViewHdrPreview.exe";
+    if (!std::filesystem::exists(previewPath)) {
+        ShowRtxError(UiText(IsEnglish(),
+            L"找不到 MiraViewHdrPreview.exe；請重新安裝完整版本。",
+            L"MiraViewHdrPreview.exe is missing; reinstall the complete package."));
+        return;
+    }
+    if (!std::filesystem::exists(applicationDirectory / L"nvngx_vsr.dll") ||
+        !std::filesystem::exists(applicationDirectory / L"nvngx_truehdr.dll")) {
+        ShowRtxError(UiText(IsEnglish(),
+            L"找不到 nvngx_vsr.dll 或 nvngx_truehdr.dll；請重新安裝完整版本。",
+            L"nvngx_vsr.dll or nvngx_truehdr.dll is missing; reinstall the complete package."));
+        return;
+    }
+    MONITORINFOEXW monitorInfo{sizeof(MONITORINFOEXW)};
+    GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitorInfo);
+    std::wstring parameters = L"\"" + currentImage_->path + L"\" --monitor \"" +
+        monitorInfo.szDevice + L"\"";
+    if (IsEnglish()) parameters += L" --lang en";
+    const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(
+        window_, L"open", previewPath.c_str(), parameters.c_str(),
+        previewPath.parent_path().c_str(), SW_SHOWNORMAL));
+    if (result <= 32) {
+        ShowRtxError(UiText(IsEnglish(),
+            L"無法啟動 RTX 視訊增強(VSR + HDR)。",
+            L"RTX Video Enhancement (VSR + HDR) could not be started."));
+    }
+#else
+    ShowRtxError(UiText(IsEnglish(),
+        L"此版本未包含 NVIDIA RTX Video SDK。",
+        L"This build does not include the NVIDIA RTX Video SDK."));
+#endif
 }
 
 void App::UploadCurrentBitmap() {
     bitmap_.Reset();
-    const auto image = enhancementEnabled_ && enhancedImage_ ? enhancedImage_ : currentImage_;
+    const auto image = enhancementEnabled_ && enhancedImage_ && !showOriginalForComparison_
+        ? enhancedImage_ : currentImage_;
     if (!renderTarget_ || !image || image->pixels.empty()) return;
     const auto properties = D2D1::BitmapProperties(
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
     const HRESULT result = renderTarget_->CreateBitmap(
         D2D1::SizeU(image->width, image->height), image->pixels.data(),
         image->stride, properties, &bitmap_);
-    if (FAILED(result)) SetNotice(L"無法將圖片上傳到 Direct2D。", 5000);
+    if (FAILED(result)) SetNotice(UiText(IsEnglish(),
+        L"無法將圖片上傳到 Direct2D。", L"The image could not be uploaded to Direct2D."), 5000);
 }
 
 void App::SetViewMode(const ViewMode mode) {
@@ -579,6 +766,12 @@ D2D1_RECT_F App::ImageRectangle(const D2D1_SIZE_F& clientSize) const {
     return D2D1::RectF(left, top, left + width, top + height);
 }
 
+void App::ToggleMaximized() {
+    if (fullscreen_) ToggleFullscreen();
+    ShowWindow(window_, IsZoomed(window_) ? SW_RESTORE : SW_MAXIMIZE);
+    UpdateMenuChecks();
+}
+
 void App::ToggleFullscreen() {
     if (!fullscreen_) {
         windowStyle_ = static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_STYLE));
@@ -604,21 +797,35 @@ void App::ToggleFullscreen() {
 }
 
 void App::ShowContextMenu(const POINT screenPoint) {
+    const bool english = IsEnglish();
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING, CommandOpen, L"開啟圖片…\tO");
+    AppendMenuW(menu, MF_STRING, CommandOpen,
+        UiText(english, L"開啟圖片…\tO", L"Open image…\tO"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, CommandPrevious, L"上一張\t←");
-    AppendMenuW(menu, MF_STRING, CommandNext, L"下一張\t→");
+    AppendMenuW(menu, MF_STRING, CommandPrevious,
+        UiText(english, L"上一張\t←", L"Previous\t←"));
+    AppendMenuW(menu, MF_STRING, CommandNext,
+        UiText(english, L"下一張\t→", L"Next\t→"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::FitWindow ? MF_CHECKED : 0), CommandFit, L"適合視窗\t1");
-    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::FitWidth ? MF_CHECKED : 0), CommandFitWidth, L"適合寬度\t2");
-    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::ActualSize ? MF_CHECKED : 0), CommandActual, L"原始大小\t3");
-    AppendMenuW(menu, MF_STRING | (fullscreen_ ? MF_CHECKED : 0), CommandFullscreen, L"全螢幕\tF11");
-    AppendMenuW(menu, MF_STRING | (showInfo_ ? MF_CHECKED : 0), CommandToggleInfo, L"資訊列\tI");
+    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::FitWindow ? MF_CHECKED : 0), CommandFit,
+        UiText(english, L"適合視窗\t1", L"Fit window\t1"));
+    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::FitWidth ? MF_CHECKED : 0), CommandFitWidth,
+        UiText(english, L"適合寬度\t2", L"Fit width\t2"));
+    AppendMenuW(menu, MF_STRING | (viewMode_ == ViewMode::ActualSize ? MF_CHECKED : 0), CommandActual,
+        UiText(english, L"原始大小\t3", L"Actual size\t3"));
+    AppendMenuW(menu, MF_STRING | (IsZoomed(window_) && !fullscreen_ ? MF_CHECKED : 0), CommandMaximize,
+        UiText(english, L"視窗最大化\tM", L"Maximize window\tM"));
+    AppendMenuW(menu, MF_STRING | (fullscreen_ ? MF_CHECKED : 0), CommandFullscreen,
+        UiText(english, L"無邊框全螢幕\tF11", L"Borderless fullscreen\tF11"));
+    AppendMenuW(menu, MF_STRING | (showInfo_ ? MF_CHECKED : 0), CommandToggleInfo,
+        UiText(english, L"資訊列\tI", L"Information bar\tI"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING | (enhancementEnabled_ ? MF_CHECKED : 0), CommandRtx, L"RTX 增強\tR");
+    AppendMenuW(menu, MF_STRING | (enhancementEnabled_ ? MF_CHECKED : 0), CommandRtx,
+        UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
+    AppendMenuW(menu, MF_STRING, CommandHdrPreview,
+        UiText(english, L"RTX 視訊增強(VSR + HDR)\tH", L"RTX Video Enhancement (VSR + HDR)\tH"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, CommandExit, L"結束");
+    AppendMenuW(menu, MF_STRING, CommandExit, UiText(english, L"結束", L"Exit"));
     TrackPopupMenu(menu, TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, 0, window_, nullptr);
     DestroyMenu(menu);
 }
@@ -657,11 +864,15 @@ void App::LoadSettings() {
     if (mode >= 0 && mode <= 2) viewMode_ = static_cast<ViewMode>(mode);
     const int wheel = GetPrivateProfileIntW(L"input", L"wheelBehavior", 0, native.c_str());
     if (wheel >= 0 && wheel <= 1) wheelBehavior_ = static_cast<WheelBehavior>(wheel);
+    const int language = GetPrivateProfileIntW(L"ui", L"language", 0, native.c_str());
+    if (language >= 0 && language <= 1) language_ = static_cast<UiLanguage>(language);
+    const int layoutVersion = GetPrivateProfileIntW(L"settings", L"layoutVersion", 0, native.c_str());
     const int left = GetPrivateProfileIntW(L"window", L"left", INT_MIN, native.c_str());
     const int top = GetPrivateProfileIntW(L"window", L"top", INT_MIN, native.c_str());
     const int width = GetPrivateProfileIntW(L"window", L"width", 0, native.c_str());
     const int height = GetPrivateProfileIntW(L"window", L"height", 0, native.c_str());
-    if (left != INT_MIN && top != INT_MIN && width >= 640 && height >= 480) {
+    if (layoutVersion >= LayoutSettingsVersion &&
+        left != INT_MIN && top != INT_MIN && width >= 640 && height >= 480) {
         RECT proposed{left, top, left + width, top + height};
         if (MonitorFromRect(&proposed, MONITOR_DEFAULTTONULL)) MoveWindow(window_, left, top, width, height, FALSE);
     }
@@ -674,8 +885,14 @@ void App::SaveSettings() const {
     std::filesystem::create_directories(path.parent_path(), error);
     const auto native = path.wstring();
     RECT rectangle{};
-    if (fullscreen_) rectangle = windowPlacement_.rcNormalPosition;
-    else GetWindowRect(window_, &rectangle);
+    if (fullscreen_) {
+        rectangle = windowPlacement_.rcNormalPosition;
+    } else if (IsZoomed(window_)) {
+        WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
+        if (GetWindowPlacement(window_, &placement)) rectangle = placement.rcNormalPosition;
+    } else {
+        GetWindowRect(window_, &rectangle);
+    }
     const auto write = [&](const wchar_t* section, const wchar_t* key, const int value) {
         const auto text = std::to_wstring(value);
         WritePrivateProfileStringW(section, key, text.c_str(), native.c_str());
@@ -687,6 +904,8 @@ void App::SaveSettings() const {
     write(L"view", L"showInfo", showInfo_ ? 1 : 0);
     write(L"view", L"mode", static_cast<int>(viewMode_));
     write(L"input", L"wheelBehavior", static_cast<int>(wheelBehavior_));
+    write(L"ui", L"language", static_cast<int>(language_));
+    write(L"settings", L"layoutVersion", LayoutSettingsVersion);
 }
 
 LRESULT CALLBACK App::WindowProcedure(const HWND window, const UINT message, const WPARAM wParam, const LPARAM lParam) {
@@ -715,6 +934,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         if (enhancementEnabled_ && wParam != SIZE_MINIMIZED && currentImage_) {
             SetTimer(window_, EnhancementResizeTimer, 250, nullptr);
         }
+        UpdateMenuChecks();
         InvalidateRect(window_, nullptr, FALSE);
         return 0;
     case WM_DPICHANGED: {
@@ -803,6 +1023,15 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case L'O': ShowOpenDialog(); return 0;
         case L'I': showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); return 0;
         case L'R': ToggleEnhancement(); return 0;
+        case L'H': LaunchHdrPreview(); return 0;
+        case L'M': ToggleMaximized(); return 0;
+        case L'C':
+            if (enhancementEnabled_ && enhancedImage_ && !showOriginalForComparison_) {
+                showOriginalForComparison_ = true;
+                UploadCurrentBitmap();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return 0;
         case L'1': SetViewMode(ViewMode::FitWindow); return 0;
         case L'2': SetViewMode(ViewMode::FitWidth); return 0;
         case L'3': SetViewMode(ViewMode::ActualSize); return 0;
@@ -811,6 +1040,21 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         }
         break;
     }
+    case WM_KEYUP:
+        if (wParam == L'C' && showOriginalForComparison_) {
+            showOriginalForComparison_ = false;
+            UploadCurrentBitmap();
+            InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        }
+        break;
+    case WM_KILLFOCUS:
+        if (showOriginalForComparison_) {
+            showOriginalForComparison_ = false;
+            UploadCurrentBitmap();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        return 0;
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
         case CommandOpen: ShowOpenDialog(); break;
@@ -821,27 +1065,39 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandFit: SetViewMode(ViewMode::FitWindow); break;
         case CommandFitWidth: SetViewMode(ViewMode::FitWidth); break;
         case CommandActual: SetViewMode(ViewMode::ActualSize); break;
+        case CommandMaximize: ToggleMaximized(); break;
         case CommandFullscreen: ToggleFullscreen(); break;
         case CommandToggleInfo: showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); break;
         case CommandRtx: ToggleEnhancement(); break;
+        case CommandHdrPreview: LaunchHdrPreview(); break;
         case CommandWheelNavigate: SetWheelBehavior(WheelBehavior::Navigate); break;
         case CommandWheelZoom: SetWheelBehavior(WheelBehavior::Zoom); break;
+        case CommandLanguageChinese: SetLanguage(UiLanguage::TraditionalChinese); break;
+        case CommandLanguageEnglish: SetLanguage(UiLanguage::English); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.3.0\n\n"
+                L"MiraView 0.4.0 (RTX VSR + HDR)\n\n"
                 L"【繁體中文】\n"
-                L"高速原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR。\n"
+                L"針對漫畫文字與圖片放大的原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR 與 HDR。\n"
+                L"MiraView 由 Mira + View 組成；Mira 取「觀看／令人驚豔」的語感，不是縮寫。\n"
                 L"VSR 會依目前顯示尺寸輸出，最高單邊 7680 像素。\n"
                 L"使用 NVIDIA RTX Video SDK 1.1。\n"
+                L"按 H 可開啟 VSR → TrueHDR 的 10-bit 整合顯示。\n"
+                L"按 M 將視窗最大化；按 F11 使用無邊框全螢幕。\n"
+                L"RTX 套用後可按住 C 比較原圖。\n"
                 L"本專案不代表受到 NVIDIA 贊助或背書。\n\n"
                 L"[English]\n"
-                L"Fast native Windows image viewer with NVIDIA RTX Video VSR.\n"
+                L"Native Windows image viewer for enlarged comic text and images, with NVIDIA RTX Video VSR and HDR.\n"
+                L"MiraView combines Mira—evoking look and wonder—with View; it is not an acronym.\n"
                 L"VSR output follows the current display size, up to 7680 pixels per side.\n"
                 L"Built with NVIDIA RTX Video SDK 1.1.\n"
+                L"Press H for integrated VSR to TrueHDR 10-bit output.\n"
+                L"Press M to maximize the window or F11 for borderless fullscreen.\n"
+                L"Hold C to compare the original image.\n"
                 L"This project is not sponsored or endorsed by NVIDIA.",
                 L"關於 MiraView / About MiraView", MB_OK | MB_ICONINFORMATION);
             break;
-        case CommandExit: DestroyWindow(window_); break;
+        case CommandExit: SendMessageW(window_, WM_CLOSE, 0, 0); break;
         default: break;
         }
         return 0;
@@ -858,10 +1114,10 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         }
         return 0;
     case WM_CLOSE:
+        SaveSettings();
         DestroyWindow(window_);
         return 0;
     case WM_DESTROY:
-        SaveSettings();
         cache_.SetNotificationWindow(nullptr);
         enhancementWorker_.reset();
         if (mainMenu_) {
@@ -871,6 +1127,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
             viewMenu_ = nullptr;
             wheelMenu_ = nullptr;
             rtxMenu_ = nullptr;
+            languageMenu_ = nullptr;
         }
         PostQuitMessage(0);
         return 0;

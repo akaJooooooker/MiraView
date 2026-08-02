@@ -25,6 +25,11 @@ enum class WheelBehavior : int {
     Zoom = 1
 };
 
+enum class UiLanguage : int {
+    TraditionalChinese = 0,
+    English = 1
+};
+
 class App {
 public:
     App();
@@ -38,6 +43,9 @@ private:
     bool CreateMainWindow(HINSTANCE instance);
     HMENU CreateApplicationMenu();
     void UpdateMenuChecks();
+    void SetLanguage(UiLanguage language);
+    [[nodiscard]] bool IsEnglish() const noexcept { return language_ == UiLanguage::English; }
+    void ShowRtxError(const std::wstring& details = {});
     bool CreateDeviceIndependentResources();
     bool EnsureRenderTarget();
     void DiscardRenderTarget();
@@ -53,6 +61,7 @@ private:
     void RequestEnhancement();
     void ApplyEnhancementResult();
     void ToggleEnhancement();
+    void LaunchHdrPreview();
     void UploadCurrentBitmap();
     void SetViewMode(ViewMode mode);
     void SetWheelBehavior(WheelBehavior behavior);
@@ -61,6 +70,7 @@ private:
     [[nodiscard]] float CurrentScale(const D2D1_SIZE_F& clientSize) const;
     [[nodiscard]] D2D1_RECT_F ImageRectangle(const D2D1_SIZE_F& clientSize) const;
 
+    void ToggleMaximized();
     void ToggleFullscreen();
     void ShowContextMenu(POINT screenPoint);
     void SetNotice(std::wstring text, DWORD milliseconds = 3500);
@@ -74,6 +84,7 @@ private:
     HMENU viewMenu_ = nullptr;
     HMENU wheelMenu_ = nullptr;
     HMENU rtxMenu_ = nullptr;
+    HMENU languageMenu_ = nullptr;
     FolderModel folder_;
     ImageCache cache_;
     std::unique_ptr<ImageEnhancer> enhancer_;
@@ -94,6 +105,7 @@ private:
 
     ViewMode viewMode_ = ViewMode::FitWindow;
     WheelBehavior wheelBehavior_ = WheelBehavior::Navigate;
+    UiLanguage language_ = UiLanguage::TraditionalChinese;
     float zoomFactor_ = 1.0F;
     D2D1_POINT_2F pan_{0.0F, 0.0F};
     POINT dragOrigin_{};
@@ -103,6 +115,7 @@ private:
     bool loading_ = false;
     bool enhancementEnabled_ = false;
     bool enhancementInProgress_ = false;
+    bool showOriginalForComparison_ = false;
     std::uint64_t enhancementGeneration_ = 0;
     bool fullscreen_ = false;
     WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};

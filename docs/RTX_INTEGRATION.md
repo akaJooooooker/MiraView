@@ -34,6 +34,16 @@
 5. 加入取消 token 與 generation；翻頁後舊頁結果不可覆蓋新頁。
 6. UI 加入 R 開關、品質、按住顯示原圖、分割比較與失敗原因。
 
+## RTX 視訊增強（VSR + HDR）
+
+- 主程式按 `H` 會啟動 10-bit 整合顯示視窗；同一個 D3D11 裝置與 NGX 生命週期依序執行 VSR Ultra → TrueHDR。
+- TrueHDR 輸入是 BGRA8 Rec.709 SDR，輸出為 `DXGI_FORMAT_R10G10B10A2_UNORM`。
+- 預覽使用 flip-model swap chain 並設定 `DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020`，不是在 SDR 畫面上模擬加亮。
+- 啟動前透過 `IDXGIOutput6::GetDesc1` 確認 Windows HDR，並把螢幕峰值亮度限制在 SDK 接受的 400–2000 nits。
+- `1`／`2`／`3` 提供標準、鮮明、柔和三組 TrueHDR contrast／saturation／middle-gray 參數。
+- runtime 是 `nvngx_truehdr.dll`，與 VSR 使用的 `nvngx_vsr.dll` 不同。
+- VSR 的 BGRA8 GPU texture 直接作為 TrueHDR 輸入，不經 CPU 讀回，最後複製到 HDR10 swap chain。
+
 ## 排程規則
 
 - 圖片縮小顯示：不跑超解析度。

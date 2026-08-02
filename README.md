@@ -1,8 +1,8 @@
 # MiraView
 
-MiraView 是一款支援 NVIDIA RTX Video VSR 與 HDR 的原生 Windows 圖片檢視器。開啟任意圖片後會自動索引同資料夾、依自然檔名排序，並在背景預先解碼前後各 8 張圖片。
+MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 Windows 圖片檢視器，並整合 NVIDIA RTX Video VSR 與 HDR。VSR 是超解析度放大增強，不是內容修復；它不會憑空還原原圖沒有的細節，但對低解析度漫畫中的細字、網點與邊緣通常特別有幫助。開啟任意圖片後，程式會自動索引同資料夾、依自然檔名排序，並在背景預先解碼前後各 8 張圖片。
 
-目前版本：**0.3 高速檢視核心＋RTX Video VSR**。
+目前版本：**0.4.0 圖片檢視核心＋RTX Video VSR／HDR 整合顯示**。
 
 ## 已完成
 
@@ -17,6 +17,7 @@ MiraView 是一款支援 NVIDIA RTX Video VSR 與 HDR 的原生 Windows 圖片�
 - 快速連按翻頁時清除過時的排隊工作，眼前頁面永遠是最高優先。
 - Direct2D 顯示、適合視窗、適合寬度、100%、滑鼠拖曳與游標定位縮放。
 - 原生 Windows 選單列（檔案、瀏覽、檢視、RTX、說明）、右鍵選單與拖放開圖。
+- 主視窗首次會在目前螢幕工作區正中央以 960×640 開啟；之後仍會記住使用者自行調整的位置與大小。
 - 專屬 MiraView 應用程式圖示，已嵌入 EXE 與視窗標題列。
 - 全螢幕、頁碼／尺寸／縮放資訊列；全螢幕時自動隱藏選單列。
 - 滑鼠滾輪可選擇「上一張／下一張」或「放大／縮小」。
@@ -25,12 +26,19 @@ MiraView 是一款支援 NVIDIA RTX Video VSR 與 HDR 的原生 Windows 圖片�
 - `R` 鍵開關 RTX；只在圖片需要放大時執行，固定使用 Ultra（品質 4）。
 - RTX 在獨立背景執行緒處理；翻頁不等 AI，舊頁結果也不會覆蓋新頁。
 - RTX 成功套用後，視窗標題會顯示 `[RTX]`。
+- RTX 套用後可按住 `C` 暫時顯示原圖，放開立即回到增強結果。
 - VSR 輸出依實際顯示尺寸計算；4K 全螢幕會自動重算到接近 3840×2160，最高單邊 7680 像素。
 - 切圖時不顯示「處理中／已套用」浮層，底部資訊列會顯示實際 RTX 輸出解析度。
+- `H` 鍵會開啟 VSR Ultra → TrueHDR 的整合式 D3D11 GPU 管線，直接輸出 10-bit HDR10／Rec.2020；VSR 與 HDR 之間不經 CPU 讀回。
+- 整合顯示會先確認 Windows HDR 已開啟，依螢幕峰值亮度處理，並提供標準、鮮明、柔和三種預設。
+- 整合顯示會索引同資料夾並預讀前後各 4 張；可用方向鍵、Page Up／Page Down、Space 或滾輪連續翻圖，每張都重新執行需要的 VSR／TrueHDR 渲染。
+- 可同時開啟多個 MiraView 或 RTX 整合顯示視窗；每個程序使用獨立 NGX 實例。本機已驗證兩條 VSR Ultra → TrueHDR 管線可在同一張 RTX 4070 Ti SUPER 同時完成，實際數量與速度取決於 GPU 負載和顯存。
+- 一般視窗可按 `M` 最大化並保留標題列、選單與工作列；`F11` 則切換無邊框全螢幕。
+- 「說明 → 語言」可在繁體中文與 English 之間切換；主視窗、右鍵選單、提示及 RTX 視窗會跟隨並記住選擇。
 
 ## 執行
 
-一般使用者可從 [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest) 下載 `MiraView-0.3.0-win-x64.zip`，解壓縮後直接執行 `MiraView.exe`。請保留 `nvngx_vsr.dll` 在執行檔旁，RTX 功能才可使用。壓縮檔內附中英雙語 `README.txt`。
+一般使用者可從 [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest) 下載 `MiraView-0.4.0-win-x64.zip`，完整解壓縮後直接執行 `MiraView.exe`。請保留 `MiraViewHdrPreview.exe`、`nvngx_vsr.dll` 與 `nvngx_truehdr.dll` 在執行檔旁，RTX 功能才可使用。壓縮檔內附中英雙語 `README.txt`。
 
 Release 執行檔位於：
 
@@ -59,8 +67,11 @@ out\MiraView.exe
 | `3` | 原始大小（100%） |
 | `Home` / `End` | 第一張／最後一張 |
 | `F11` 或雙擊 | 切換全螢幕 |
+| `M` | 切換視窗最大化，保留標題列、選單與工作列 |
 | `I` | 顯示／隱藏資訊列 |
-| `R` | 開啟／關閉 RTX Video VSR |
+| `R` | 開啟／關閉「RTX VSR 超解析度」 |
+| `H` | 開啟「RTX 視訊增強(VSR + HDR)」；RTX 視窗可用方向鍵／滾輪翻圖，按 `M` 最大化、`F11` 全螢幕、`1`／`2`／`3` 切換強度 |
+| 按住 `C` | 暫時顯示原圖，放開恢復 RTX VSR 結果 |
 | 右鍵 | 功能選單 |
 
 ## RTX 使用門檻
@@ -69,9 +80,12 @@ out\MiraView.exe
 - GeForce RTX 20 系列或更新，或 NVIDIA RTX 1000 系列或更新的 GPU。
 - 支援該顯示卡與 RTX Video SDK 的 NVIDIA 驅動程式；本機 SDK 1.1 文件列出的最低版本是 550.58。
 - MiraView 必須實際在 NVIDIA RTX GPU 上執行；雙顯卡筆電可在 Windows 圖形設定或 NVIDIA App 將 MiraView 指定為高效能 NVIDIA GPU。
-- RTX 增強版旁邊必須有 `nvngx_vsr.dll`；只有一般檢視功能時不需要 RTX 顯示卡。
+- VSR 需要 `nvngx_vsr.dll`；整合 HDR 顯示另需 `MiraViewHdrPreview.exe` 與 `nvngx_truehdr.dll`。
+- 整合 HDR 顯示需要 HDR 顯示器，並在「Windows 設定 → 系統 → 顯示器 → HDR」開啟 HDR。
 
 MiraView 是直接呼叫 RTX Video SDK，而不是借用瀏覽器的驅動程式增強開關。因此達到上述門檻後，即使 NVIDIA 控制面板／NVIDIA App 裡的「影片／視訊增強」沒有開啟，MiraView 的 `R` 鍵 RTX 功能仍可使用。該開關主要控制 NVIDIA 驅動替支援的瀏覽器或播放器所做的增強；硬體、驅動、SDK runtime 與程式使用 NVIDIA GPU 的條件仍然不可少。
+
+若電腦沒有相容的 RTX GPU、驅動程式過舊、Windows／螢幕未開啟 HDR，或必要 DLL 遺失，MiraView 會顯示錯誤對話框並退回一般圖片檢視，不會因為不支援 RTX 而直接關閉。HDR 使用獨立程序，因此 HDR 初始化失敗也不會拖垮主檢視視窗；背景 VSR 工作另有例外攔截。
 
 官方參考：[RTX Video SDK Getting Started](https://developer.nvidia.com/rtx-video-sdk/getting-started)、[NVIDIA 控制面板影片影像設定說明](https://www.nvidia.com/content/Control-Panel-Help/vLatest/en-us/mergedProjects/Display/Reference_Adjust_Video_Image_Settings.htm)。
 
@@ -99,7 +113,9 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
 
 - GIF／動態 WebP 目前只顯示第一幀。
 - WebP、HEIC、AVIF、JPEG XL 是否可開啟取決於 Windows 已安裝的 WIC codec。
-- 尚未有縮圖瀏覽器、資料夾樹、CBZ、雙頁模式、檔案管理、ICC／HDR 完整色彩管理。
+- 尚未有縮圖瀏覽器、資料夾樹、CBZ、雙頁模式、檔案管理與完整 ICC 色彩管理。
+- RTX VSR 與 TrueHDR 已在同一個 D3D11 裝置中以 GPU texture 串接；10-bit HDR swap chain 目前仍使用整合顯示視窗，主檢視視窗維持 SDR。
+- v0.4.1 的主要目標是把 HDR10 swap chain 整合回原本的 MiraView 視窗，不再另開 RTX 視窗。
 - 目前 RTX 輸出會讀回 CPU 再交給 Direct2D；下一階段將改為 D3D11 texture 零拷貝顯示。
 - 第一次開啟 RTX 需初始化 NGX，實測約數秒；後續圖片較快。
 - 目前 VSR 結果只保留在記憶體，尚未建立磁碟快取。

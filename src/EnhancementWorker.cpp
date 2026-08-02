@@ -1,5 +1,8 @@
 #include "EnhancementWorker.h"
 
+#include <exception>
+#include <string>
+
 EnhancementWorker::EnhancementWorker(ImageEnhancer& enhancer, const HWND notificationWindow)
     : enhancer_(enhancer), notificationWindow_(notificationWindow),
       worker_(&EnhancementWorker::WorkerLoop, this) {}
@@ -47,11 +50,21 @@ void EnhancementWorker::WorkerLoop() {
 
         Result completed;
         completed.generation = work.generation;
-        if (work.source) {
-            completed.image = enhancer_.Enhance(
-                *work.source, work.targetWidth, work.targetHeight, completed.error);
-        } else {
-            completed.error = L"RTX 工作缺少來源圖片。";
+        try {
+            if (work.source) {
+                completed.image = enhancer_.Enhance(
+                    *work.source, work.targetWidth, work.targetHeight, completed.error);
+            } else {
+                completed.error = L"RTX 工作缺少來源圖片。 / RTX work item has no source image.";
+            }
+        } catch (const std::exception& exception) {
+            completed.error = L"RTX 處理發生例外，但 MiraView 已安全回復一般顯示。 / "
+                              L"RTX processing raised an exception; MiraView safely returned to normal display. ";
+            const std::string what = exception.what();
+            completed.error.append(what.begin(), what.end());
+        } catch (...) {
+            completed.error = L"RTX 處理發生未知錯誤，但 MiraView 已安全回復一般顯示。 / "
+                              L"RTX processing failed unexpectedly; MiraView safely returned to normal display.";
         }
 
         {

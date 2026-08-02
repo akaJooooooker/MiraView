@@ -38,5 +38,6 @@ private:
     bool initialized_ = false;
     bool ngxInitialized_ = false;
     bool initializationAttempted_ = false;
-    std::wstring status_ = L"RTX Video SDK 1.1 已連結；第一次啟用時初始化 VSR。";
+    std::wstring status_ = L"RTX Video SDK 1.1 已連結；第一次啟用時初始化 VSR。 / "
+                           L"RTX Video SDK 1.1 is linked; VSR initializes on first use.";
 };

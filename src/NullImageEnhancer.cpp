@@ -1,7 +1,8 @@
 #include "NullImageEnhancer.h"
 
 std::wstring NullImageEnhancer::Status() const {
-    return L"高速檢視核心已啟用；RTX 後端將在 NVIDIA SDK 驗證階段接入。";
+    return L"此版本未包含 NVIDIA RTX Video SDK 後端；一般圖片檢視仍可正常使用。 / "
+           L"This build does not include the NVIDIA RTX Video SDK backend; normal image viewing remains available.";
 }
 
 std::shared_ptr<ImageData> NullImageEnhancer::Enhance(

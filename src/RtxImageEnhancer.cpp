@@ -36,14 +36,14 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
 
     if (source.width == 0 || source.height == 0 || source.pixels.empty() ||
         targetWidth <= source.width || targetHeight <= source.height) {
-        error = L"RTX VSR 只在圖片需要放大時執行。";
+        error = L"RTX VSR 只在圖片需要放大時執行。 / RTX VSR runs only when the image needs upscaling.";
         return {};
     }
     if (targetWidth > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         targetHeight > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         source.width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         source.height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
-        error = L"圖片尺寸超過 D3D11 texture 上限。";
+        error = L"圖片尺寸超過 D3D11 texture 上限。 / Image dimensions exceed the D3D11 texture limit.";
         return {};
     }
 
@@ -62,7 +62,7 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
     ComPtr<ID3D11Texture2D> input;
     HRESULT hr = device_->CreateTexture2D(&inputDescription, &initialData, &input);
     if (FAILED(hr)) {
-        error = L"建立 RTX 輸入 texture 失敗。";
+        error = L"建立 RTX 輸入 texture 失敗。 / Failed to create the RTX input texture.";
         return {};
     }
 
@@ -80,7 +80,7 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
     ComPtr<ID3D11Texture2D> output;
     hr = device_->CreateTexture2D(&outputDescription, nullptr, &output);
     if (FAILED(hr)) {
-        error = L"建立 RTX 輸出 texture 失敗。";
+        error = L"建立 RTX 輸出 texture 失敗。 / Failed to create the RTX output texture.";
         return {};
     }
 
@@ -110,7 +110,7 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
     ComPtr<ID3D11Texture2D> staging;
     hr = device_->CreateTexture2D(&stagingDescription, nullptr, &staging);
     if (FAILED(hr)) {
-        error = L"建立 RTX readback texture 失敗。";
+        error = L"建立 RTX readback texture 失敗。 / Failed to create the RTX readback texture.";
         return {};
     }
     context_->CopyResource(staging.Get(), output.Get());
@@ -118,7 +118,7 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
     D3D11_MAPPED_SUBRESOURCE mapped{};
     hr = context_->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
     if (FAILED(hr)) {
-        error = L"讀回 RTX VSR 結果失敗。";
+        error = L"讀回 RTX VSR 結果失敗。 / Failed to read back the RTX VSR result.";
         return {};
     }
 
@@ -138,12 +138,12 @@ std::shared_ptr<ImageData> RtxImageEnhancer::Enhance(
         }
     } catch (...) {
         context_->Unmap(staging.Get(), 0);
-        error = L"RTX 結果需要的記憶體不足。";
+        error = L"RTX 結果需要的記憶體不足。 / Not enough memory for the RTX result.";
         return {};
     }
     context_->Unmap(staging.Get(), 0);
 
-    SetStatusLocked(L"RTX Video VSR 可用，品質等級：Ultra（4）。");
+    SetStatusLocked(L"RTX Video VSR 可用，品質等級：Ultra（4）。 / RTX Video VSR is available, quality: Ultra (4).");
     return result;
 }
 
@@ -168,7 +168,7 @@ bool RtxImageEnhancer::InitializeLocked(std::wstring& error) {
             D3D11_SDK_VERSION, &device_, &selected, &context_);
     }
     if (FAILED(hr)) {
-        error = L"無法建立支援 RTX 的 D3D11 裝置。";
+        error = L"無法建立支援 RTX 的 D3D11 裝置。 / Could not create an RTX-capable D3D11 device.";
         SetStatusLocked(error);
         return false;
     }
@@ -198,7 +198,8 @@ bool RtxImageEnhancer::InitializeLocked(std::wstring& error) {
     const NVSDK_NGX_Result availabilityResult =
         parameters_->Get(NVSDK_NGX_Parameter_VSR_Available, &available);
     if (NVSDK_NGX_FAILED(availabilityResult) || available == 0) {
-        error = L"目前 GPU／驅動或 nvngx_vsr.dll 不支援 VSR。";
+        error = L"目前 GPU／驅動或 nvngx_vsr.dll 不支援 VSR。 / "
+                L"The current GPU, driver, or nvngx_vsr.dll does not support VSR.";
         SetStatusLocked(error);
         ShutdownLocked();
         return false;
@@ -217,7 +218,8 @@ bool RtxImageEnhancer::InitializeLocked(std::wstring& error) {
     }
 
     initialized_ = true;
-    SetStatusLocked(L"RTX Video VSR 已初始化，品質等級：Ultra（4）。");
+    SetStatusLocked(L"RTX Video VSR 已初始化，品質等級：Ultra（4）。 / "
+                    L"RTX Video VSR initialized, quality: Ultra (4).");
     return true;
 }
 
@@ -247,7 +249,7 @@ void RtxImageEnhancer::SetStatusLocked(std::wstring status) {
 std::wstring RtxImageEnhancer::NgxError(
     const wchar_t* operation, const NVSDK_NGX_Result result) {
     std::wostringstream stream;
-    stream << operation << L" 失敗（NGX 0x" << std::hex
-           << static_cast<unsigned long long>(result) << L"）。";
+    stream << operation << L" 失敗 / failed (NGX 0x" << std::hex
+           << static_cast<unsigned long long>(result) << L").";
     return stream.str();
 }
