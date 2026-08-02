@@ -30,6 +30,8 @@ MiraView 是以「高速漫畫／圖片檢視器，逐步長期取代 FastStone�
 
 ## 執行
 
+一般使用者可從 [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest) 下載 `MiraView-0.3.0-win-x64.zip`，解壓縮後直接執行 `MiraView.exe`。請保留 `nvngx_vsr.dll` 在執行檔旁，RTX 功能才可使用。壓縮檔內附中英雙語 `README.txt`。
+
 Release 執行檔位於：
 
 ```text

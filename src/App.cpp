@@ -152,7 +152,7 @@ HMENU App::CreateApplicationMenu() {
     AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0, L"品質：Ultra（4）");
     AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0, L"輸出：依顯示尺寸（最高 7680 px）");
 
-    AppendMenuW(helpMenu, MF_STRING, CommandAbout, L"關於 MiraView…");
+    AppendMenuW(helpMenu, MF_STRING, CommandAbout, L"關於 MiraView / About MiraView…");
 
     AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), L"檔案(&F)");
     AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(navigateMenu), L"瀏覽(&N)");
@@ -828,10 +828,18 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandWheelZoom: SetWheelBehavior(WheelBehavior::Zoom); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.3\n\n高速圖片檢視器＋NVIDIA RTX Video VSR\n"
-                L"VSR 輸出依目前顯示尺寸，最高 7680 像素。\n\n"
-                L"使用 NVIDIA RTX Video SDK 1.1。\n此專案不代表受到 NVIDIA 贊助或背書。",
-                L"關於 MiraView", MB_OK | MB_ICONINFORMATION);
+                L"MiraView 0.3.0\n\n"
+                L"【繁體中文】\n"
+                L"高速原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR。\n"
+                L"VSR 會依目前顯示尺寸輸出，最高單邊 7680 像素。\n"
+                L"使用 NVIDIA RTX Video SDK 1.1。\n"
+                L"本專案不代表受到 NVIDIA 贊助或背書。\n\n"
+                L"[English]\n"
+                L"Fast native Windows image viewer with NVIDIA RTX Video VSR.\n"
+                L"VSR output follows the current display size, up to 7680 pixels per side.\n"
+                L"Built with NVIDIA RTX Video SDK 1.1.\n"
+                L"This project is not sponsored or endorsed by NVIDIA.",
+                L"關於 MiraView / About MiraView", MB_OK | MB_ICONINFORMATION);
             break;
         case CommandExit: DestroyWindow(window_); break;
         default: break;

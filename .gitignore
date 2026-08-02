@@ -3,6 +3,7 @@
 /out/
 /.sdk/
 /tmp/
+/dist/
 /CMakeSettings.json
 /CMakeUserPresets.json
 *.user
