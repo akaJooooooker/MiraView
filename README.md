@@ -1,6 +1,6 @@
 # MiraView
 
-MiraView 是以「高速漫畫／圖片檢視器，逐步長期取代 FastStone」為目標的原生 Windows 專案。第一版先把最重要的體感打好：開啟任意圖片後，自動索引同資料夾，依自然檔名排序，並在背景預先解碼前後各 8 張圖片。
+MiraView 是一款支援 NVIDIA RTX Video VSR 與 HDR 的原生 Windows 圖片檢視器。開啟任意圖片後會自動索引同資料夾、依自然檔名排序，並在背景預先解碼前後各 8 張圖片。
 
 目前版本：**0.3 高速檢視核心＋RTX Video VSR**。
 
