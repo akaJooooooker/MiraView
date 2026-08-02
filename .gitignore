@@ -1,0 +1,11 @@
+/.vs/
+/build/
+/out/
+/.sdk/
+/tmp/
+/CMakeSettings.json
+/CMakeUserPresets.json
+*.user
+*.suo
+*.VC.db
+*.VC.opendb

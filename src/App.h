@@ -1,0 +1,113 @@
+#pragma once
+
+#include "FolderModel.h"
+#include "EnhancementWorker.h"
+#include "ImageCache.h"
+#include "ImageEnhancer.h"
+
+#include <Windows.h>
+#include <d2d1.h>
+#include <dwrite.h>
+#include <wrl/client.h>
+
+#include <filesystem>
+#include <memory>
+#include <string>
+
+enum class ViewMode : int {
+    FitWindow = 0,
+    FitWidth = 1,
+    ActualSize = 2
+};
+
+enum class WheelBehavior : int {
+    Navigate = 0,
+    Zoom = 1
+};
+
+class App {
+public:
+    App();
+    ~App();
+    int Run(HINSTANCE instance, const std::filesystem::path& initialFile);
+
+private:
+    static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+    LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+
+    bool CreateMainWindow(HINSTANCE instance);
+    HMENU CreateApplicationMenu();
+    void UpdateMenuChecks();
+    bool CreateDeviceIndependentResources();
+    bool EnsureRenderTarget();
+    void DiscardRenderTarget();
+    void Paint();
+    void DrawOverlay(const D2D1_SIZE_F& size);
+
+    void ShowOpenDialog();
+    bool OpenImage(const std::filesystem::path& file);
+    void Navigate(int delta);
+    void NavigateTo(std::size_t index);
+    void ScheduleNeighborhood();
+    void ApplyCurrentIfReady();
+    void RequestEnhancement();
+    void ApplyEnhancementResult();
+    void ToggleEnhancement();
+    void UploadCurrentBitmap();
+    void SetViewMode(ViewMode mode);
+    void SetWheelBehavior(WheelBehavior behavior);
+    void ZoomAt(float factor, POINT clientPoint);
+    [[nodiscard]] float BaseScale(const D2D1_SIZE_F& clientSize) const;
+    [[nodiscard]] float CurrentScale(const D2D1_SIZE_F& clientSize) const;
+    [[nodiscard]] D2D1_RECT_F ImageRectangle(const D2D1_SIZE_F& clientSize) const;
+
+    void ToggleFullscreen();
+    void ShowContextMenu(POINT screenPoint);
+    void SetNotice(std::wstring text, DWORD milliseconds = 3500);
+    void UpdateWindowTitle();
+    void LoadSettings();
+    void SaveSettings() const;
+    [[nodiscard]] std::filesystem::path SettingsPath() const;
+
+    HWND window_ = nullptr;
+    HMENU mainMenu_ = nullptr;
+    HMENU viewMenu_ = nullptr;
+    HMENU wheelMenu_ = nullptr;
+    HMENU rtxMenu_ = nullptr;
+    FolderModel folder_;
+    ImageCache cache_;
+    std::unique_ptr<ImageEnhancer> enhancer_;
+    std::unique_ptr<EnhancementWorker> enhancementWorker_;
+    std::shared_ptr<ImageData> currentImage_;
+    std::shared_ptr<ImageData> enhancedImage_;
+
+    Microsoft::WRL::ComPtr<ID2D1Factory> d2dFactory_;
+    Microsoft::WRL::ComPtr<IDWriteFactory> writeFactory_;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> textFormat_;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> titleFormat_;
+    Microsoft::WRL::ComPtr<ID2D1HwndRenderTarget> renderTarget_;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap_;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> textBrush_;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> mutedBrush_;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> accentBrush_;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> overlayBrush_;
+
+    ViewMode viewMode_ = ViewMode::FitWindow;
+    WheelBehavior wheelBehavior_ = WheelBehavior::Navigate;
+    float zoomFactor_ = 1.0F;
+    D2D1_POINT_2F pan_{0.0F, 0.0F};
+    POINT dragOrigin_{};
+    D2D1_POINT_2F panOrigin_{};
+    bool dragging_ = false;
+    bool showInfo_ = true;
+    bool loading_ = false;
+    bool enhancementEnabled_ = false;
+    bool enhancementInProgress_ = false;
+    std::uint64_t enhancementGeneration_ = 0;
+    bool fullscreen_ = false;
+    WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};
+    DWORD windowStyle_ = 0;
+    std::wstring notice_;
+    ULONGLONG noticeUntil_ = 0;
+};
+

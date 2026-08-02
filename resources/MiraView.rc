@@ -1,0 +1,4 @@
+#include <windows.h>
+
+101 ICON "icon\\MiraView.ico"
+1 RT_MANIFEST "app.manifest"
