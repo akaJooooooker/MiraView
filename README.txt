@@ -1,4 +1,4 @@
-MiraView 0.4.1
+MiraView 0.4.2
 ================
 
 繁體中文
@@ -17,7 +17,7 @@ MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 64 �
 2. 執行 MiraView.exe。
 3. 按 O 開啟圖片、把圖片拖進視窗，或在命令列把圖片路徑傳給 MiraView.exe。
 4. VSR 需要 nvngx_vsr.dll；整合 HDR 顯示另需 nvngx_truehdr.dll，兩者都要
-   放在 MiraView.exe 的同一個資料夾。0.4.1 不再需要獨立 HDR 執行檔。
+   放在 MiraView.exe 的同一個資料夾。0.4.2 不需要獨立 HDR 執行檔。
 
 Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯示警告。
 請只從本專案的官方 GitHub Release 下載；若確認來源正確，可選擇「其他資訊」
@@ -49,6 +49,8 @@ Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯
 VSR + HDR 整合顯示操作
 - 原本的 MiraView 主視窗會由 10-bit HDR10 swap chain 接管，不再另開 HDR 視窗；
   VSR Ultra 的 GPU texture 會直接交給 TrueHDR，再輸出 HDR10／Rec.2020。
+- HDR 圖片使用主視窗內的專用顯示區，上下資訊列保持可見。從 HDR 直接切回
+  純 VSR 時，程式會先結束舊 TrueHDR 工作，避免畫面或翻頁卡在上一張 HDR 幀。
 - 左右鍵 / Page Up / Page Down / Space / 滾輪：瀏覽同資料夾圖片；程式沿用主
   檢視器前後各 8 張預讀，TrueHDR 在背景處理，快速翻頁只保留最新請求。
 - 可同時開啟多個 MiraView 程序；每個程序使用獨立 NGX
@@ -120,7 +122,7 @@ Install and start
 3. Press O to open an image, drag an image into the window, or pass an image
    path to MiraView.exe on the command line.
 4. VSR requires nvngx_vsr.dll. Integrated HDR also requires nvngx_truehdr.dll;
-   keep both beside MiraView.exe. v0.4.1 no longer needs a separate HDR executable.
+   keep both beside MiraView.exe. v0.4.2 does not need a separate HDR executable.
 
 Windows SmartScreen may warn because this release does not yet have a commercial
 code-signing certificate. Download only from the official GitHub Release for
@@ -154,6 +156,9 @@ Integrated VSR + HDR controls
 - The original MiraView main window is taken over by a 10-bit HDR10 swap chain;
   no separate HDR window opens. The VSR Ultra GPU texture is passed directly to
   TrueHDR and then to HDR10/Rec.2020 output.
+- HDR uses a dedicated content surface inside the main window, keeping both
+  information bars visible. A direct HDR-to-VSR switch retires the old TrueHDR
+  task first so the display and navigation cannot stick on the last HDR frame.
 - Left/Right, Page Up/Page Down, Space, or the wheel navigates the indexed
   folder. The main viewer's eight-image prefetch on either side is reused.
   TrueHDR runs in the background, and rapid navigation retains only the latest

@@ -4,7 +4,7 @@
 
 MiraView is a native Windows image viewer designed for enlarging comic text, linework, and general images, with integrated NVIDIA RTX Video VSR and HDR. VSR is super-resolution enhancement, not content restoration: it cannot reconstruct details that do not exist in the source, but it is often especially helpful for small text, screentones, and edges in low-resolution comics. After opening an image, MiraView automatically indexes the same folder, applies natural filename sorting, and pre-decodes the eight neighboring images in each direction.
 
-Current version: **0.4.1 with integrated RTX Video VSR/HDR presentation in the main window**.
+Current version: **0.4.2 with integrated RTX Video VSR/HDR presentation in the main window**.
 
 ## Implemented Features
 
@@ -32,6 +32,7 @@ Current version: **0.4.1 with integrated RTX Video VSR/HDR presentation in the m
 - VSR output is calculated from the actual display size. A 4K fullscreen view is recalculated toward 3840×2160, with a maximum dimension of 7680 pixels.
 - No “processing/applied” overlay appears while changing images. The information bar shows the actual RTX output resolution.
 - Press `H` to toggle the VSR Ultra → TrueHDR D3D11 GPU pipeline in the original MiraView main window. It presents directly through 10-bit HDR10/Rec.2020, opens no separate HDR window, and performs no CPU readback between VSR and HDR.
+- HDR is presented in a dedicated content surface inside the main window so both information bars remain visible. When switching directly from HDR to VSR, MiraView safely retires the previous TrueHDR task before starting VSR, preventing the display and navigation from sticking on the last HDR frame.
 - The integrated presentation verifies that Windows HDR is enabled, uses the display's peak brightness, and provides Standard, Vivid, and Soft presets.
 - HDR reuses the main viewer's folder index and eight-image prefetch in each direction. Navigate continuously with the arrow keys, Page Up/Page Down, Space, or the mouse wheel. TrueHDR runs through a background queue that retains only the latest request during rapid navigation, keeping the main window responsive and preventing stale results from replacing the current image.
 - Multiple MiraView processes may run at the same time, with an independent NGX instance per process. Two concurrent VSR Ultra → TrueHDR pipelines have been verified locally on one RTX 4070 Ti SUPER; actual capacity and performance depend on GPU load and VRAM.
@@ -40,7 +41,7 @@ Current version: **0.4.1 with integrated RTX Video VSR/HDR presentation in the m
 
 ## Running MiraView
 
-Download `MiraView-0.4.1-win-x64.zip` from [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest), extract the complete archive, and run `MiraView.exe`. Keep `nvngx_vsr.dll` and `nvngx_truehdr.dll` next to the executable for RTX features; v0.4.1 no longer requires `MiraViewHdrPreview.exe`. The archive also contains a bilingual `README.txt`.
+Download `MiraView-0.4.2-win-x64.zip` from [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest), extract the complete archive, and run `MiraView.exe`. Keep `nvngx_vsr.dll` and `nvngx_truehdr.dll` next to the executable for RTX features; v0.4.2 does not require `MiraViewHdrPreview.exe`. The archive also contains a bilingual `README.txt`.
 
 The locally built Release executable is located at:
 
@@ -82,7 +83,7 @@ Launch it and drag an image into the window, or pass an image path as the first 
 - GeForce RTX 20 Series or newer, or NVIDIA RTX 1000 Series or newer GPU.
 - An NVIDIA driver that supports both the installed GPU and RTX Video SDK. The SDK 1.1 documentation bundled locally lists 550.58 as the minimum driver version.
 - MiraView must run on the NVIDIA RTX GPU. On dual-GPU laptops, assign MiraView to the high-performance NVIDIA GPU through Windows Graphics settings or the NVIDIA App.
-- VSR requires `nvngx_vsr.dll`; integrated HDR additionally requires `nvngx_truehdr.dll`. The HDR10 swap chain is built directly into `MiraView.exe` in v0.4.1.
+- VSR requires `nvngx_vsr.dll`; integrated HDR additionally requires `nvngx_truehdr.dll`. The HDR10 swap chain is built directly into `MiraView.exe` in v0.4.2.
 - Integrated HDR presentation requires an HDR display with HDR enabled under Windows Settings → System → Display → HDR.
 
 MiraView calls RTX Video SDK directly instead of relying on the browser-oriented driver enhancement toggle. Therefore, when the requirements above are met, the `R`-key RTX feature can work even if “Video Enhancement” is disabled in NVIDIA Control Panel or the NVIDIA App. That setting primarily controls driver enhancement for supported browsers and media players; compatible hardware, drivers, SDK runtime files, and execution on the NVIDIA GPU are still required.

@@ -4,7 +4,7 @@
 
 MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 Windows 圖片檢視器，並整合 NVIDIA RTX Video VSR 與 HDR。VSR 是超解析度放大增強，不是內容修復；它不會憑空還原原圖沒有的細節，但對低解析度漫畫中的細字、網點與邊緣通常特別有幫助。開啟任意圖片後，程式會自動索引同資料夾、依自然檔名排序，並在背景預先解碼前後各 8 張圖片。
 
-目前版本：**0.4.1 主視窗整合式 RTX Video VSR／HDR 顯示**。
+目前版本：**0.4.2 主視窗整合式 RTX Video VSR／HDR 顯示**。
 
 ## 已完成
 
@@ -32,6 +32,7 @@ MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 Wind
 - VSR 輸出依實際顯示尺寸計算；4K 全螢幕會自動重算到接近 3840×2160，最高單邊 7680 像素。
 - 切圖時不顯示「處理中／已套用」浮層，底部資訊列會顯示實際 RTX 輸出解析度。
 - `H` 鍵會在原本的 MiraView 主視窗切換 VSR Ultra → TrueHDR D3D11 GPU 管線，直接輸出 10-bit HDR10／Rec.2020；不再開啟獨立 HDR 視窗，VSR 與 HDR 之間也不經 CPU 讀回。
+- HDR 畫面會在主視窗中央的專用顯示區呈現，上下資訊列保持可見；從 HDR 直接切到純 VSR 時，會先安全結束舊的 TrueHDR 工作再啟動 VSR，畫面與翻頁不會卡在上一張 HDR 幀。
 - 整合顯示會先確認 Windows HDR 已開啟，依螢幕峰值亮度處理，並提供標準、鮮明、柔和三種預設。
 - HDR 顯示沿用主程式的資料夾索引與前後各 8 張預讀；可用方向鍵、Page Up／Page Down、Space 或滾輪連續翻圖。TrueHDR 在背景佇列處理，快速翻頁只保留最新請求，不會阻塞主視窗或讓舊結果覆蓋新圖。
 - 可同時開啟多個 MiraView 程序；每個程序使用獨立 NGX 實例。本機已驗證兩條 VSR Ultra → TrueHDR 管線可在同一張 RTX 4070 Ti SUPER 同時完成，實際數量與速度取決於 GPU 負載和顯存。
@@ -40,7 +41,7 @@ MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 Wind
 
 ## 執行
 
-一般使用者可從 [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest) 下載 `MiraView-0.4.1-win-x64.zip`，完整解壓縮後直接執行 `MiraView.exe`。請保留 `nvngx_vsr.dll` 與 `nvngx_truehdr.dll` 在執行檔旁，RTX 功能才可使用；0.4.1 已不再需要 `MiraViewHdrPreview.exe`。壓縮檔內附中英雙語 `README.txt`。
+一般使用者可從 [GitHub Releases](https://github.com/akaJooooooker/MiraView/releases/latest) 下載 `MiraView-0.4.2-win-x64.zip`，完整解壓縮後直接執行 `MiraView.exe`。請保留 `nvngx_vsr.dll` 與 `nvngx_truehdr.dll` 在執行檔旁，RTX 功能才可使用；0.4.2 不需要 `MiraViewHdrPreview.exe`。壓縮檔內附中英雙語 `README.txt`。
 
 Release 執行檔位於：
 
@@ -82,7 +83,7 @@ out\MiraView.exe
 - GeForce RTX 20 系列或更新，或 NVIDIA RTX 1000 系列或更新的 GPU。
 - 支援該顯示卡與 RTX Video SDK 的 NVIDIA 驅動程式；本機 SDK 1.1 文件列出的最低版本是 550.58。
 - MiraView 必須實際在 NVIDIA RTX GPU 上執行；雙顯卡筆電可在 Windows 圖形設定或 NVIDIA App 將 MiraView 指定為高效能 NVIDIA GPU。
-- VSR 需要 `nvngx_vsr.dll`；整合 HDR 顯示另需 `nvngx_truehdr.dll`。0.4.1 的 HDR10 swap chain 已直接內建於 `MiraView.exe`。
+- VSR 需要 `nvngx_vsr.dll`；整合 HDR 顯示另需 `nvngx_truehdr.dll`。0.4.2 的 HDR10 swap chain 已直接內建於 `MiraView.exe`。
 - 整合 HDR 顯示需要 HDR 顯示器，並在「Windows 設定 → 系統 → 顯示器 → HDR」開啟 HDR。
 
 MiraView 是直接呼叫 RTX Video SDK，而不是借用瀏覽器的驅動程式增強開關。因此達到上述門檻後，即使 NVIDIA 控制面板／NVIDIA App 裡的「影片／視訊增強」沒有開啟，MiraView 的 `R` 鍵 RTX 功能仍可使用。該開關主要控制 NVIDIA 驅動替支援的瀏覽器或播放器所做的增強；硬體、驅動、SDK runtime 與程式使用 NVIDIA GPU 的條件仍然不可少。

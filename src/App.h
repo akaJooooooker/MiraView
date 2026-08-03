@@ -14,6 +14,7 @@
 #include <wrl/client.h>
 
 #include <filesystem>
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -41,6 +42,7 @@ public:
 
 private:
     static LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK HdrSurfaceProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
 
     bool CreateMainWindow(HINSTANCE instance);
@@ -68,6 +70,9 @@ private:
     void DisableHdrMode(bool restoreSdrBackend = true);
     void SetHdrPreset(int preset);
     bool PaintHdr(std::wstring& error);
+    bool CreateHdrSurface(std::wstring& error);
+    void DestroyHdrSurface() noexcept;
+    void UpdateHdrSurfaceBounds();
     void RecreateEnhancementBackend();
     void ClampHdrZoom();
     void UploadCurrentBitmap();
@@ -88,6 +93,7 @@ private:
     [[nodiscard]] std::filesystem::path SettingsPath() const;
 
     HWND window_ = nullptr;
+    HWND hdrSurfaceWindow_ = nullptr;
     HMENU mainMenu_ = nullptr;
     HMENU viewMenu_ = nullptr;
     HMENU wheelMenu_ = nullptr;
@@ -100,6 +106,7 @@ private:
     std::unique_ptr<EnhancementWorker> enhancementWorker_;
 #if MIRAVIEW_WITH_RTX
     std::unique_ptr<RtxHdrPresenter> hdrPresenter_;
+    std::shared_ptr<std::atomic_bool> hdrRetirement_;
 #endif
     std::shared_ptr<ImageData> currentImage_;
     std::shared_ptr<ImageData> enhancedImage_;

@@ -65,8 +65,12 @@ struct RtxHdrPresenter::RenderCore final : std::enable_shared_from_this<RenderCo
 
     void Start(const HWND window) {
         notificationWindow = window;
+        started = true;
         const auto self = shared_from_this();
-        std::thread([self] { self->WorkerLoop(); }).detach();
+        std::thread([self] {
+            self->WorkerLoop();
+            if (self->retirement) self->retirement->store(true, std::memory_order_release);
+        }).detach();
     }
 
     void Request(WorkItem work) {
@@ -94,10 +98,12 @@ struct RtxHdrPresenter::RenderCore final : std::enable_shared_from_this<RenderCo
             completed.reset();
             notificationWindow = nullptr;
         }
+        if (!started && retirement) retirement->store(true, std::memory_order_release);
         condition.notify_all();
     }
 
     RtxHdrProcessor processor;
+    std::shared_ptr<std::atomic_bool> retirement;
 
 private:
     void WorkerLoop() {
@@ -155,26 +161,29 @@ private:
     std::optional<WorkItem> pending;
     std::optional<Result> completed;
     bool stopping = false;
+    bool started = false;
 };
 
 RtxHdrPresenter::~RtxHdrPresenter() {
-    Shutdown();
+    (void)Shutdown();
 }
 
 bool RtxHdrPresenter::Initialize(const HWND window, std::wstring& error) {
-    Shutdown();
+    (void)Shutdown();
     window_ = window;
     if (!window_ || !IsWindow(window_)) {
         error = L"HDR 顯示缺少有效的主視窗。 / HDR presentation has no valid main window.";
         return false;
     }
     if (!RefreshHdrMonitor(error)) {
-        Shutdown();
+        (void)Shutdown();
         return false;
     }
     core_ = std::make_shared<RenderCore>();
+    retirement_ = std::make_shared<std::atomic_bool>(false);
+    core_->retirement = retirement_;
     if (!core_->processor.Initialize(error) || !CreateSwapChain(error)) {
-        Shutdown();
+        (void)Shutdown();
         return false;
     }
     core_->Start(window_);
@@ -446,13 +455,19 @@ void RtxHdrPresenter::Invalidate() noexcept {
     ++requestGeneration_;
 }
 
-void RtxHdrPresenter::Shutdown() noexcept {
+std::shared_ptr<std::atomic_bool> RtxHdrPresenter::Shutdown() noexcept {
+    auto retirement = retirement_;
+    if (!retirement) {
+        retirement = std::make_shared<std::atomic_bool>(true);
+    }
     Invalidate();
     swapChain_.Reset();
     if (core_) core_->Stop();
     core_.reset();
+    retirement_.reset();
     window_ = nullptr;
     monitor_ = nullptr;
     monitorName_.clear();
     maxLuminance_ = 1000;
+    return retirement;
 }

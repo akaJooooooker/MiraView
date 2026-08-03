@@ -21,10 +21,12 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 constexpr wchar_t WindowClassName[] = L"MiraView.MainWindow";
+constexpr wchar_t HdrSurfaceClassName[] = L"MiraView.HdrSurface";
 constexpr wchar_t ProductName[] = L"MiraView";
 constexpr WORD AppIconResource = 101;
 constexpr UINT_PTR NoticeTimer = 1;
 constexpr UINT_PTR EnhancementResizeTimer = 2;
+constexpr UINT_PTR HdrRetirementTimer = 3;
 constexpr int LayoutSettingsVersion = 4;
 
 enum Command : UINT {
@@ -141,6 +143,55 @@ bool App::CreateMainWindow(const HINSTANCE instance) {
     cache_.SetNotificationWindow(window_);
     enhancementWorker_ = std::make_unique<EnhancementWorker>(*enhancer_, window_);
     return true;
+}
+
+bool App::CreateHdrSurface(std::wstring& error) {
+    if (hdrSurfaceWindow_ && IsWindow(hdrSurfaceWindow_)) return true;
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    WNDCLASSEXW windowClass{sizeof(WNDCLASSEXW)};
+    windowClass.style = CS_HREDRAW | CS_VREDRAW;
+    windowClass.lpfnWndProc = HdrSurfaceProcedure;
+    windowClass.hInstance = instance;
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    windowClass.lpszClassName = HdrSurfaceClassName;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        error = L"無法註冊主視窗 HDR 顯示區。 / Could not register the main-window HDR surface.";
+        return false;
+    }
+
+    hdrSurfaceWindow_ = CreateWindowExW(
+        WS_EX_NOACTIVATE, HdrSurfaceClassName, nullptr,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+        0, 0, 1, 1, window_, nullptr, instance, nullptr);
+    if (!hdrSurfaceWindow_) {
+        error = L"無法在 MiraView 主視窗建立 HDR 顯示區。 / "
+                L"Could not create the HDR surface inside the MiraView main window.";
+        return false;
+    }
+    UpdateHdrSurfaceBounds();
+    return true;
+}
+
+void App::DestroyHdrSurface() noexcept {
+    if (hdrSurfaceWindow_ && IsWindow(hdrSurfaceWindow_)) DestroyWindow(hdrSurfaceWindow_);
+    hdrSurfaceWindow_ = nullptr;
+}
+
+void App::UpdateHdrSurfaceBounds() {
+    if (!hdrSurfaceWindow_ || !IsWindow(hdrSurfaceWindow_)) return;
+    RECT client{};
+    GetClientRect(window_, &client);
+    const float dpiScale = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
+    const int top = showInfo_ ? static_cast<int>(std::lround(48.0F * dpiScale)) : 0;
+    const int bottom = showInfo_ ? static_cast<int>(std::lround(38.0F * dpiScale)) : 0;
+    const int width = std::max(1L, client.right - client.left);
+    const int height = std::max(1L, client.bottom - client.top - top - bottom);
+    SetWindowPos(hdrSurfaceWindow_, HWND_TOP, 0, top, width, height,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+#if MIRAVIEW_WITH_RTX
+    if (hdrPresenter_) hdrPresenter_->Invalidate();
+#endif
 }
 
 HMENU App::CreateApplicationMenu() {
@@ -370,6 +421,14 @@ void App::Paint() {
     if (hdrEnabled_) {
         std::wstring error;
         bool rendered = false;
+        if (EnsureRenderTarget()) {
+            renderTarget_->BeginDraw();
+            renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+            renderTarget_->Clear(D2D1::ColorF(0x0B0E12));
+            DrawOverlay(renderTarget_->GetSize());
+            const HRESULT overlayResult = renderTarget_->EndDraw();
+            if (overlayResult == D2DERR_RECREATE_TARGET) DiscardRenderTarget();
+        }
         try {
             rendered = PaintHdr(error);
         } catch (const std::exception& exception) {
@@ -453,9 +512,23 @@ void App::DrawOverlay(const D2D1_SIZE_F& size) {
 
         std::wostringstream details;
         const bool english = IsEnglish();
-        details << ViewModeName(viewMode_, english) << L"  ·  " << static_cast<int>(std::lround(CurrentScale(size) * 100.0F)) << L"%";
+        D2D1_SIZE_F scaleSize = size;
+        if (hdrEnabled_ && hdrSurfaceWindow_) {
+            RECT hdrClient{};
+            GetClientRect(hdrSurfaceWindow_, &hdrClient);
+            scaleSize = D2D1::SizeF(
+                static_cast<float>(std::max(1L, hdrClient.right)),
+                static_cast<float>(std::max(1L, hdrClient.bottom)));
+        }
+        details << ViewModeName(viewMode_, english) << L"  ·  "
+                << static_cast<int>(std::lround(CurrentScale(scaleSize) * 100.0F)) << L"%";
         if (currentImage_) details << L"  ·  " << currentImage_->width << L" × " << currentImage_->height;
-        if (enhancementEnabled_) {
+        if (hdrEnabled_) {
+            static constexpr const wchar_t* chinesePresets[]{L"標準", L"鮮明", L"柔和"};
+            static constexpr const wchar_t* englishPresets[]{L"Standard", L"Vivid", L"Gentle"};
+            details << (hdrLastUsedVsr_ ? L"  ·  RTX VSR → HDR10" : L"  ·  RTX TrueHDR 10-bit");
+            details << L"  ·  " << (english ? englishPresets[hdrPreset_] : chinesePresets[hdrPreset_]);
+        } else if (enhancementEnabled_) {
             if (enhancementInProgress_) details << UiText(english, L"  ·  RTX 處理中", L"  ·  RTX processing");
             else if (showOriginalForComparison_ && enhancedImage_) details << UiText(english, L"  ·  RTX 比較：原圖", L"  ·  RTX comparison: Original");
             else if (enhancedImage_) details << L"  ·  RTX " << enhancedImage_->width << L" × " << enhancedImage_->height;
@@ -600,6 +673,17 @@ void App::ApplyCurrentIfReady() {
 
 void App::RequestEnhancement() {
     if (!enhancementEnabled_ || !enhancementWorker_ || !currentImage_) return;
+#if MIRAVIEW_WITH_RTX
+    if (hdrRetirement_ && !hdrRetirement_->load(std::memory_order_acquire)) {
+        enhancementInProgress_ = true;
+        SetTimer(window_, HdrRetirementTimer, 100, nullptr);
+        UpdateWindowTitle();
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+    hdrRetirement_.reset();
+    KillTimer(window_, HdrRetirementTimer);
+#endif
     RECT client{};
     GetClientRect(window_, &client);
     const D2D1_SIZE_F size = D2D1::SizeF(
@@ -665,6 +749,9 @@ void App::ToggleEnhancement() {
     if (enhancementEnabled_) {
         enhancementEnabled_ = false;
         enhancementInProgress_ = false;
+#if MIRAVIEW_WITH_RTX
+        KillTimer(window_, HdrRetirementTimer);
+#endif
         enhancedImage_.reset();
         showOriginalForComparison_ = false;
         ++enhancementGeneration_;
@@ -714,6 +801,13 @@ void App::ToggleHdrMode() {
         return;
     }
 #if MIRAVIEW_WITH_RTX
+    if (hdrRetirement_ && !hdrRetirement_->load(std::memory_order_acquire)) {
+        SetNotice(UiText(IsEnglish(),
+            L"上一個 RTX HDR 工作正在結束，完成後再試一次。",
+            L"The previous RTX HDR task is finishing; try again in a moment."), 3500);
+        return;
+    }
+    hdrRetirement_.reset();
     wchar_t executablePath[32768]{};
     if (GetModuleFileNameW(nullptr, executablePath, static_cast<DWORD>(std::size(executablePath))) == 0) {
         ShowRtxError(UiText(IsEnglish(),
@@ -736,14 +830,18 @@ void App::ToggleHdrMode() {
     ++enhancementGeneration_;
     enhancementWorker_.reset();
     enhancer_.reset();
-    DiscardRenderTarget();
 
-    auto presenter = std::make_unique<RtxHdrPresenter>();
     std::wstring error;
-    if (!presenter->Initialize(window_, error)) {
-        presenter.reset();
+    if (!CreateHdrSurface(error)) {
         RecreateEnhancementBackend();
-        EnsureRenderTarget();
+        ShowRtxError(error);
+        return;
+    }
+    auto presenter = std::make_unique<RtxHdrPresenter>();
+    if (!presenter->Initialize(hdrSurfaceWindow_, error)) {
+        presenter.reset();
+        DestroyHdrSurface();
+        RecreateEnhancementBackend();
         UploadCurrentBitmap();
         ShowRtxError(error);
         UpdateMenuChecks();
@@ -775,20 +873,21 @@ void App::DisableHdrMode(const bool restoreSdrBackend) {
     ) return;
 #if MIRAVIEW_WITH_RTX
     if (hdrPresenter_) {
-        hdrPresenter_->Shutdown();
+        hdrRetirement_ = hdrPresenter_->Shutdown();
         hdrPresenter_.reset();
     }
 #endif
+    DestroyHdrSurface();
     hdrEnabled_ = false;
     hdrLastUsedVsr_ = false;
     if (restoreSdrBackend) {
         RecreateEnhancementBackend();
-        EnsureRenderTarget();
         UploadCurrentBitmap();
     }
     UpdateWindowTitle();
     UpdateMenuChecks();
-    InvalidateRect(window_, nullptr, FALSE);
+    RedrawWindow(window_, nullptr, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 void App::SetHdrPreset(const int preset) {
@@ -805,7 +904,7 @@ bool App::PaintHdr(std::wstring& error) {
 #if MIRAVIEW_WITH_RTX
     if (!hdrEnabled_ || !hdrPresenter_) return false;
     RECT client{};
-    GetClientRect(window_, &client);
+    GetClientRect(hdrSurfaceWindow_, &client);
     RECT destination{0, 0, std::max(1L, client.right), std::max(1L, client.bottom)};
     if (currentImage_) {
         const D2D1_SIZE_F size = D2D1::SizeF(
@@ -1099,6 +1198,27 @@ LRESULT CALLBACK App::WindowProcedure(const HWND window, const UINT message, con
     return result;
 }
 
+LRESULT CALLBACK App::HdrSurfaceProcedure(
+    const HWND window, const UINT message, const WPARAM wParam, const LPARAM lParam) {
+    switch (message) {
+#if MIRAVIEW_WITH_RTX
+    case RtxHdrPresenter::FrameReadyMessage:
+        if (const HWND parent = GetParent(window); parent && IsWindow(parent)) {
+            PostMessageW(parent, message, wParam, lParam);
+        }
+        return 0;
+#endif
+    case WM_NCHITTEST:
+        return HTTRANSPARENT;
+    case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
+    case WM_ERASEBKGND:
+        return 1;
+    default:
+        return DefWindowProcW(window, message, wParam, lParam);
+    }
+}
+
 LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM lParam) {
     switch (message) {
     case WM_PAINT:
@@ -1108,6 +1228,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         return 1;
     case WM_SIZE:
         if (renderTarget_) renderTarget_->Resize(D2D1::SizeU(LOWORD(lParam), HIWORD(lParam)));
+        if (hdrEnabled_) UpdateHdrSurfaceBounds();
         if (hdrEnabled_ && wParam != SIZE_MINIMIZED && currentImage_) ClampHdrZoom();
         if (enhancementEnabled_ && wParam != SIZE_MINIMIZED && currentImage_) {
             SetTimer(window_, EnhancementResizeTimer, 250, nullptr);
@@ -1120,6 +1241,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         SetWindowPos(window_, nullptr, rectangle->left, rectangle->top,
             rectangle->right - rectangle->left, rectangle->bottom - rectangle->top,
             SWP_NOACTIVATE | SWP_NOZORDER);
+        if (hdrEnabled_) UpdateHdrSurfaceBounds();
         return 0;
     }
     case ImageCache::ImageReadyMessage:
@@ -1204,7 +1326,12 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
             ZoomAt(1.0F / 1.15F, POINT{rectangle.right / 2, rectangle.bottom / 2}); return 0;
         }
         case L'O': ShowOpenDialog(); return 0;
-        case L'I': showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); return 0;
+        case L'I':
+            showInfo_ = !showInfo_;
+            if (hdrEnabled_) UpdateHdrSurfaceBounds();
+            UpdateMenuChecks();
+            InvalidateRect(window_, nullptr, FALSE);
+            return 0;
         case L'R': ToggleEnhancement(); return 0;
         case L'H': ToggleHdrMode(); return 0;
         case L'M': ToggleMaximized(); return 0;
@@ -1250,7 +1377,12 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandActual: SetViewMode(ViewMode::ActualSize); break;
         case CommandMaximize: ToggleMaximized(); break;
         case CommandFullscreen: ToggleFullscreen(); break;
-        case CommandToggleInfo: showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); break;
+        case CommandToggleInfo:
+            showInfo_ = !showInfo_;
+            if (hdrEnabled_) UpdateHdrSurfaceBounds();
+            UpdateMenuChecks();
+            InvalidateRect(window_, nullptr, FALSE);
+            break;
         case CommandRtx: ToggleEnhancement(); break;
         case CommandHdr: ToggleHdrMode(); break;
         case CommandHdrStandard: SetHdrPreset(0); break;
@@ -1262,7 +1394,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandLanguageEnglish: SetLanguage(UiLanguage::English); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.4.1 (RTX VSR + HDR)\n\n"
+                L"MiraView 0.4.2 (RTX VSR + HDR)\n\n"
                 L"【繁體中文】\n"
                 L"針對漫畫文字與圖片放大的原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR 與 HDR。\n"
                 L"MiraView 由 Mira + View 組成；Mira 取「觀看／令人驚豔」的語感，不是縮寫。\n"
@@ -1288,6 +1420,17 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         }
         return 0;
     case WM_TIMER:
+#if MIRAVIEW_WITH_RTX
+        if (wParam == HdrRetirementTimer) {
+            if (!hdrRetirement_ || hdrRetirement_->load(std::memory_order_acquire)) {
+                KillTimer(window_, HdrRetirementTimer);
+                hdrRetirement_.reset();
+                enhancementInProgress_ = false;
+                if (enhancementEnabled_ && currentImage_) RequestEnhancement();
+            }
+            return 0;
+        }
+#endif
         if (wParam == EnhancementResizeTimer) {
             KillTimer(window_, EnhancementResizeTimer);
             if (enhancementEnabled_ && currentImage_) RequestEnhancement();
@@ -1307,10 +1450,11 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         cache_.SetNotificationWindow(nullptr);
 #if MIRAVIEW_WITH_RTX
         if (hdrPresenter_) {
-            hdrPresenter_->Shutdown();
+            (void)hdrPresenter_->Shutdown();
             hdrPresenter_.reset();
         }
 #endif
+        DestroyHdrSurface();
         hdrEnabled_ = false;
         enhancementWorker_.reset();
         if (mainMenu_) {

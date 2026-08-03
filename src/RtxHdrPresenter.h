@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -31,7 +32,7 @@ public:
     bool Render(std::shared_ptr<ImageData> image, const RECT& destination, HdrPreset preset,
         bool& usedVsr, std::wstring& error);
     void Invalidate() noexcept;
-    void Shutdown() noexcept;
+    [[nodiscard]] std::shared_ptr<std::atomic_bool> Shutdown() noexcept;
 
     [[nodiscard]] unsigned int MaxLuminance() const noexcept { return maxLuminance_; }
     [[nodiscard]] const std::wstring& MonitorName() const noexcept { return monitorName_; }
@@ -46,6 +47,7 @@ private:
     HWND window_ = nullptr;
     HMONITOR monitor_ = nullptr;
     std::shared_ptr<RenderCore> core_;
+    std::shared_ptr<std::atomic_bool> retirement_;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> swapChain_;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> hdrTexture_;
     std::wstring monitorName_;
