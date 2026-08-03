@@ -1,4 +1,4 @@
-MiraView 0.4.2
+MiraView 0.4.3
 ================
 
 繁體中文
@@ -17,7 +17,7 @@ MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 64 �
 2. 執行 MiraView.exe。
 3. 按 O 開啟圖片、把圖片拖進視窗，或在命令列把圖片路徑傳給 MiraView.exe。
 4. VSR 需要 nvngx_vsr.dll；整合 HDR 顯示另需 nvngx_truehdr.dll，兩者都要
-   放在 MiraView.exe 的同一個資料夾。0.4.2 不需要獨立 HDR 執行檔。
+   放在 MiraView.exe 的同一個資料夾。0.4.3 不需要獨立 HDR 執行檔。
 
 Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯示警告。
 請只從本專案的官方 GitHub Release 下載；若確認來源正確，可選擇「其他資訊」
@@ -38,12 +38,15 @@ Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯
 - + / -：放大 / 縮小。
 - 滑鼠左鍵拖曳：平移圖片。
 - F11 或雙擊：切換全螢幕。
+- F11 全螢幕閒置 3 秒後，游標在 MiraView 所在螢幕時會自動隱藏；移動、
+  開啟右鍵選單、切換程式或離開全螢幕會恢復，其他螢幕的游標不會被隱藏。
 - M：切換視窗最大化，保留標題列、選單與工作列。
 - I：顯示或隱藏資訊列。
 - R：開啟或關閉「RTX VSR 超解析度」。
 - H：在原本主視窗開啟或關閉「RTX 視訊增強(VSR + HDR)」。
 - 按住 C：暫時顯示原圖；放開後恢復 RTX VSR 結果。
-- 右鍵：開啟快速功能選單。
+- 右鍵：開啟快速功能選單；「RTX HDR 模式」可開關 VSR + HDR，並選擇
+  標準、鮮明或柔和。
 - 從「說明 -> 語言」選擇繁體中文或 English；程式會記住選擇。
 
 VSR + HDR 整合顯示操作
@@ -122,7 +125,7 @@ Install and start
 3. Press O to open an image, drag an image into the window, or pass an image
    path to MiraView.exe on the command line.
 4. VSR requires nvngx_vsr.dll. Integrated HDR also requires nvngx_truehdr.dll;
-   keep both beside MiraView.exe. v0.4.2 does not need a separate HDR executable.
+   keep both beside MiraView.exe. v0.4.3 does not need a separate HDR executable.
 
 Windows SmartScreen may warn because this release does not yet have a commercial
 code-signing certificate. Download only from the official GitHub Release for
@@ -143,12 +146,16 @@ Controls
 - + / -: Zoom in / out.
 - Left mouse drag: Pan the image.
 - F11 or double-click: Toggle fullscreen.
+- In F11 fullscreen, the cursor hides after three idle seconds only while it is
+  on MiraView's monitor. Movement, the context menu, switching apps, or leaving
+  fullscreen restores it; a cursor on another monitor is never hidden.
 - M: Toggle a maximized window while keeping the title bar, menu, and taskbar.
 - I: Show or hide the information bar.
 - R: Enable or disable "RTX VSR Super Resolution."
 - H: Toggle "RTX Video Enhancement (VSR + HDR)" in the original main window.
 - Hold C: Temporarily show the original image; release it to restore RTX VSR.
-- Right-click: Open the quick action menu.
+- Right-click: Open the quick action menu. “RTX HDR mode” toggles VSR + HDR and
+  selects Standard, Vivid, or Gentle.
 - Choose Traditional Chinese or English under Help -> Language. The selection
   is saved automatically.
 

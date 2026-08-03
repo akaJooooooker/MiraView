@@ -27,6 +27,8 @@ constexpr WORD AppIconResource = 101;
 constexpr UINT_PTR NoticeTimer = 1;
 constexpr UINT_PTR EnhancementResizeTimer = 2;
 constexpr UINT_PTR HdrRetirementTimer = 3;
+constexpr UINT_PTR FullscreenCursorTimer = 4;
+constexpr UINT FullscreenCursorDelayMilliseconds = 3000;
 constexpr int LayoutSettingsVersion = 4;
 
 enum Command : UINT {
@@ -1050,6 +1052,7 @@ void App::ToggleFullscreen() {
             monitor.rcMonitor.right - monitor.rcMonitor.left, monitor.rcMonitor.bottom - monitor.rcMonitor.top,
             SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
         fullscreen_ = true;
+        ArmFullscreenCursorHide();
     } else {
         SetWindowLongPtrW(window_, GWL_STYLE, windowStyle_);
         SetMenu(window_, mainMenu_);
@@ -1057,13 +1060,66 @@ void App::ToggleFullscreen() {
         SetWindowPos(window_, nullptr, 0, 0, 0, 0,
             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
         fullscreen_ = false;
+        KillTimer(window_, FullscreenCursorTimer);
+        ShowFullscreenCursor();
     }
     UpdateMenuChecks();
 }
 
+void App::ArmFullscreenCursorHide() {
+    ShowFullscreenCursor();
+    KillTimer(window_, FullscreenCursorTimer);
+    if (fullscreen_) {
+        SetTimer(window_, FullscreenCursorTimer, FullscreenCursorDelayMilliseconds, nullptr);
+    }
+}
+
+void App::ShowFullscreenCursor() noexcept {
+    if (!fullscreenCursorHidden_) return;
+    for (unsigned int call = 0; call < fullscreenCursorHideCalls_; ++call) {
+        ShowCursor(TRUE);
+    }
+    fullscreenCursorHideCalls_ = 0;
+    SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+    fullscreenCursorHidden_ = false;
+}
+
+void App::HideFullscreenCursorIfEligible() {
+    KillTimer(window_, FullscreenCursorTimer);
+    if (!fullscreen_ || GetForegroundWindow() != window_) {
+        ShowFullscreenCursor();
+        return;
+    }
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return;
+    const HMONITOR appMonitor = MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST);
+    const HMONITOR cursorMonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONULL);
+    if (!appMonitor || cursorMonitor != appMonitor) {
+        ShowFullscreenCursor();
+        return;
+    }
+    if (!fullscreenCursorHidden_) {
+        int displayCount = 0;
+        do {
+            displayCount = ShowCursor(FALSE);
+            ++fullscreenCursorHideCalls_;
+        } while (displayCount >= 0);
+        fullscreenCursorHidden_ = true;
+    }
+    SetCursor(nullptr);
+}
+
 void App::ShowContextMenu(const POINT screenPoint) {
     const bool english = IsEnglish();
+    ShowFullscreenCursor();
+    KillTimer(window_, FullscreenCursorTimer);
     HMENU menu = CreatePopupMenu();
+    HMENU hdrModeMenu = CreatePopupMenu();
+    if (!menu) {
+        if (hdrModeMenu) DestroyMenu(hdrModeMenu);
+        if (fullscreen_) ArmFullscreenCursorHide();
+        return;
+    }
     AppendMenuW(menu, MF_STRING, CommandOpen,
         UiText(english, L"開啟圖片…\tO", L"Open image…\tO"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -1087,12 +1143,33 @@ void App::ShowContextMenu(const POINT screenPoint) {
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING | (enhancementEnabled_ ? MF_CHECKED : 0), CommandRtx,
         UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
-    AppendMenuW(menu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
-        UiText(english, L"RTX 視訊增強(VSR + HDR)\tH", L"RTX Video Enhancement (VSR + HDR)\tH"));
+    if (hdrModeMenu) {
+        AppendMenuW(hdrModeMenu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
+            UiText(english, L"啟用 RTX 視訊增強(VSR + HDR)\tH",
+                L"Enable RTX Video Enhancement (VSR + HDR)\tH"));
+        AppendMenuW(hdrModeMenu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(hdrModeMenu, MF_STRING, CommandHdrStandard,
+            UiText(english, L"標準", L"Standard"));
+        AppendMenuW(hdrModeMenu, MF_STRING, CommandHdrVivid,
+            UiText(english, L"鮮明", L"Vivid"));
+        AppendMenuW(hdrModeMenu, MF_STRING, CommandHdrGentle,
+            UiText(english, L"柔和", L"Gentle"));
+        CheckMenuRadioItem(hdrModeMenu, CommandHdrStandard, CommandHdrGentle,
+            hdrPreset_ == 1 ? CommandHdrVivid :
+            hdrPreset_ == 2 ? CommandHdrGentle : CommandHdrStandard,
+            MF_BYCOMMAND);
+        AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hdrModeMenu),
+            UiText(english, L"RTX HDR 模式", L"RTX HDR mode"));
+    } else {
+        AppendMenuW(menu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
+            UiText(english, L"RTX 視訊增強(VSR + HDR)\tH",
+                L"RTX Video Enhancement (VSR + HDR)\tH"));
+    }
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, CommandExit, UiText(english, L"結束", L"Exit"));
     TrackPopupMenu(menu, TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, 0, window_, nullptr);
     DestroyMenu(menu);
+    if (fullscreen_) ArmFullscreenCursorHide();
 }
 
 void App::SetNotice(std::wstring text, const DWORD milliseconds) {
@@ -1272,6 +1349,8 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         SetCapture(window_);
         return 0;
     case WM_MOUSEMOVE:
+        if (fullscreen_) ArmFullscreenCursorHide();
+        else ShowFullscreenCursor();
         if (dragging_) {
             pan_.x = panOrigin_.x + static_cast<float>(GET_X_LPARAM(lParam) - dragOrigin_.x);
             pan_.y = panOrigin_.y + static_cast<float>(GET_Y_LPARAM(lParam) - dragOrigin_.y);
@@ -1309,6 +1388,12 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         ShowContextMenu(point);
         return 0;
     }
+    case WM_SETCURSOR:
+        if (fullscreen_ && fullscreenCursorHidden_ && LOWORD(lParam) == HTCLIENT) {
+            SetCursor(nullptr);
+            return TRUE;
+        }
+        break;
     case WM_KEYDOWN: {
         switch (wParam) {
         case VK_LEFT: case VK_PRIOR: case VK_BACK: Navigate(-1); return 0;
@@ -1359,11 +1444,16 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         }
         break;
     case WM_KILLFOCUS:
+        KillTimer(window_, FullscreenCursorTimer);
+        ShowFullscreenCursor();
         if (showOriginalForComparison_) {
             showOriginalForComparison_ = false;
             UploadCurrentBitmap();
             InvalidateRect(window_, nullptr, FALSE);
         }
+        return 0;
+    case WM_SETFOCUS:
+        if (fullscreen_) ArmFullscreenCursorHide();
         return 0;
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
@@ -1394,7 +1484,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandLanguageEnglish: SetLanguage(UiLanguage::English); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.4.2 (RTX VSR + HDR)\n\n"
+                L"MiraView 0.4.3 (RTX VSR + HDR)\n\n"
                 L"【繁體中文】\n"
                 L"針對漫畫文字與圖片放大的原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR 與 HDR。\n"
                 L"MiraView 由 Mira + View 組成；Mira 取「觀看／令人驚豔」的語感，不是縮寫。\n"
@@ -1402,6 +1492,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
                 L"使用 NVIDIA RTX Video SDK 1.1。\n"
                 L"按 H 可在原本主視窗切換 VSR → TrueHDR 10-bit 顯示。\n"
                 L"按 M 將視窗最大化；按 F11 使用無邊框全螢幕。\n"
+                L"F11 全螢幕閒置 3 秒會隱藏同螢幕游標；右鍵可選擇 HDR 模式。\n"
                 L"RTX 套用後可按住 C 比較原圖。\n"
                 L"本專案不代表受到 NVIDIA 贊助或背書。\n\n"
                 L"[English]\n"
@@ -1411,6 +1502,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
                 L"Built with NVIDIA RTX Video SDK 1.1.\n"
                 L"Press H to toggle VSR to TrueHDR 10-bit output in the original main window.\n"
                 L"Press M to maximize the window or F11 for borderless fullscreen.\n"
+                L"F11 fullscreen hides an idle cursor after 3 seconds; right-click selects the HDR mode.\n"
                 L"Hold C to compare the original image.\n"
                 L"This project is not sponsored or endorsed by NVIDIA.",
                 L"關於 MiraView / About MiraView", MB_OK | MB_ICONINFORMATION);
@@ -1420,6 +1512,10 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         }
         return 0;
     case WM_TIMER:
+        if (wParam == FullscreenCursorTimer) {
+            HideFullscreenCursorIfEligible();
+            return 0;
+        }
 #if MIRAVIEW_WITH_RTX
         if (wParam == HdrRetirementTimer) {
             if (!hdrRetirement_ || hdrRetirement_->load(std::memory_order_acquire)) {
@@ -1447,6 +1543,8 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         DestroyWindow(window_);
         return 0;
     case WM_DESTROY:
+        KillTimer(window_, FullscreenCursorTimer);
+        ShowFullscreenCursor();
         cache_.SetNotificationWindow(nullptr);
 #if MIRAVIEW_WITH_RTX
         if (hdrPresenter_) {

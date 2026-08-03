@@ -85,6 +85,9 @@ private:
 
     void ToggleMaximized();
     void ToggleFullscreen();
+    void ArmFullscreenCursorHide();
+    void ShowFullscreenCursor() noexcept;
+    void HideFullscreenCursorIfEligible();
     void ShowContextMenu(POINT screenPoint);
     void SetNotice(std::wstring text, DWORD milliseconds = 3500);
     void UpdateWindowTitle();
@@ -140,6 +143,8 @@ private:
     int hdrPreset_ = 0;
     std::uint64_t enhancementGeneration_ = 0;
     bool fullscreen_ = false;
+    bool fullscreenCursorHidden_ = false;
+    unsigned int fullscreenCursorHideCalls_ = 0;
     WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};
     DWORD windowStyle_ = 0;
     std::wstring notice_;
