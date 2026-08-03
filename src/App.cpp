@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <sstream>
 #include <vector>
 
@@ -37,7 +38,10 @@ enum Command : UINT {
     CommandFullscreen,
     CommandToggleInfo,
     CommandRtx,
-    CommandHdrPreview,
+    CommandHdr,
+    CommandHdrStandard,
+    CommandHdrVivid,
+    CommandHdrGentle,
     CommandWheelNavigate,
     CommandWheelZoom,
     CommandFirst,
@@ -147,10 +151,11 @@ HMENU App::CreateApplicationMenu() {
     viewMenu_ = CreatePopupMenu();
     wheelMenu_ = CreatePopupMenu();
     rtxMenu_ = CreatePopupMenu();
+    hdrPresetMenu_ = CreatePopupMenu();
     HMENU helpMenu = CreatePopupMenu();
     languageMenu_ = CreatePopupMenu();
     if (!root || !fileMenu || !navigateMenu || !viewMenu_ || !wheelMenu_ ||
-        !rtxMenu_ || !helpMenu || !languageMenu_) return root;
+        !rtxMenu_ || !hdrPresetMenu_ || !helpMenu || !languageMenu_) return root;
 
     AppendMenuW(fileMenu, MF_STRING, CommandOpen,
         UiText(english, L"開啟圖片…\tO", L"Open image…\tO"));
@@ -191,8 +196,16 @@ HMENU App::CreateApplicationMenu() {
 
     AppendMenuW(rtxMenu_, MF_STRING, CommandRtx,
         UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
-    AppendMenuW(rtxMenu_, MF_STRING, CommandHdrPreview,
-        UiText(english, L"RTX 視訊增強(VSR + HDR)…\tH", L"RTX Video Enhancement (VSR + HDR)…\tH"));
+    AppendMenuW(rtxMenu_, MF_STRING, CommandHdr,
+        UiText(english, L"RTX 視訊增強(VSR + HDR)\tH", L"RTX Video Enhancement (VSR + HDR)\tH"));
+    AppendMenuW(hdrPresetMenu_, MF_STRING, CommandHdrStandard,
+        UiText(english, L"標準", L"Standard"));
+    AppendMenuW(hdrPresetMenu_, MF_STRING, CommandHdrVivid,
+        UiText(english, L"鮮明", L"Vivid"));
+    AppendMenuW(hdrPresetMenu_, MF_STRING, CommandHdrGentle,
+        UiText(english, L"柔和", L"Gentle"));
+    AppendMenuW(rtxMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(hdrPresetMenu_),
+        UiText(english, L"HDR 預設", L"HDR preset"));
     AppendMenuW(rtxMenu_, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
         UiText(english, L"HDR：請確保 Windows 與螢幕已開啟 HDR",
@@ -202,6 +215,8 @@ HMENU App::CreateApplicationMenu() {
     AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
         UiText(english, L"輸出：依顯示尺寸（最高 7680 px）",
             L"Output: Display-sized (7680 px maximum)"));
+    AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
+        UiText(english, L"HDR：在原本主視窗呈現", L"HDR: Presented in the original main window"));
     AppendMenuW(rtxMenu_, MF_STRING | MF_DISABLED, 0,
         UiText(english, L"按住 C：顯示原圖比較", L"Hold C: Compare original"));
 
@@ -247,6 +262,14 @@ void App::UpdateMenuChecks() {
     if (rtxMenu_) {
         CheckMenuItem(rtxMenu_, CommandRtx,
             MF_BYCOMMAND | (enhancementEnabled_ ? MF_CHECKED : MF_UNCHECKED));
+        CheckMenuItem(rtxMenu_, CommandHdr,
+            MF_BYCOMMAND | (hdrEnabled_ ? MF_CHECKED : MF_UNCHECKED));
+    }
+    if (hdrPresetMenu_) {
+        CheckMenuRadioItem(hdrPresetMenu_, CommandHdrStandard, CommandHdrGentle,
+            hdrPreset_ == 1 ? CommandHdrVivid :
+            hdrPreset_ == 2 ? CommandHdrGentle : CommandHdrStandard,
+            MF_BYCOMMAND);
     }
     if (languageMenu_) {
         CheckMenuRadioItem(languageMenu_, CommandLanguageChinese, CommandLanguageEnglish,
@@ -266,6 +289,7 @@ void App::SetLanguage(const UiLanguage language) {
     viewMenu_ = nullptr;
     wheelMenu_ = nullptr;
     rtxMenu_ = nullptr;
+    hdrPresetMenu_ = nullptr;
     languageMenu_ = nullptr;
     if (oldMenu) DestroyMenu(oldMenu);
 
@@ -343,6 +367,27 @@ void App::DiscardRenderTarget() {
 void App::Paint() {
     PAINTSTRUCT paint{};
     BeginPaint(window_, &paint);
+    if (hdrEnabled_) {
+        std::wstring error;
+        bool rendered = false;
+        try {
+            rendered = PaintHdr(error);
+        } catch (const std::exception& exception) {
+            error = L"HDR 呈現發生例外，已安全返回一般顯示。 / "
+                    L"HDR presentation raised an exception; MiraView safely returned to normal display. ";
+            const std::string details = exception.what();
+            error.append(details.begin(), details.end());
+        } catch (...) {
+            error = L"HDR 呈現發生未知錯誤，已安全返回一般顯示。 / "
+                    L"HDR presentation failed unexpectedly; MiraView safely returned to normal display.";
+        }
+        EndPaint(window_, &paint);
+        if (!rendered) {
+            DisableHdrMode();
+            ShowRtxError(error);
+        }
+        return;
+    }
     if (!EnsureRenderTarget()) {
         EndPaint(window_, &paint);
         return;
@@ -547,6 +592,7 @@ void App::ApplyCurrentIfReady() {
     if (currentImage_ && currentImage_->path == image->path) return;
     currentImage_ = std::move(image);
     loading_ = false;
+    ClampHdrZoom();
     UploadCurrentBitmap();
     if (enhancementEnabled_) RequestEnhancement();
     InvalidateRect(window_, nullptr, FALSE);
@@ -615,6 +661,7 @@ void App::ApplyEnhancementResult() {
 }
 
 void App::ToggleEnhancement() {
+    if (hdrEnabled_) DisableHdrMode();
     if (enhancementEnabled_) {
         enhancementEnabled_ = false;
         enhancementInProgress_ = false;
@@ -641,7 +688,25 @@ void App::ToggleEnhancement() {
     }
 }
 
-void App::LaunchHdrPreview() {
+void App::RecreateEnhancementBackend() {
+    enhancementWorker_.reset();
+#if MIRAVIEW_WITH_RTX
+    enhancer_ = std::make_unique<RtxImageEnhancer>();
+#else
+    enhancer_ = std::make_unique<NullImageEnhancer>();
+#endif
+    if (window_ && IsWindow(window_)) {
+        enhancementWorker_ = std::make_unique<EnhancementWorker>(*enhancer_, window_);
+    }
+}
+
+void App::ToggleHdrMode() {
+    if (hdrEnabled_) {
+        DisableHdrMode();
+        SetNotice(UiText(IsEnglish(),
+            L"已返回一般圖片顯示。", L"Returned to normal image presentation."), 3000);
+        return;
+    }
     if (!currentImage_) {
         SetNotice(UiText(IsEnglish(),
             L"請先開啟一張圖片，再啟動 RTX 視訊增強(VSR + HDR)。",
@@ -656,13 +721,6 @@ void App::LaunchHdrPreview() {
         return;
     }
     const auto applicationDirectory = std::filesystem::path(executablePath).parent_path();
-    const auto previewPath = applicationDirectory / L"MiraViewHdrPreview.exe";
-    if (!std::filesystem::exists(previewPath)) {
-        ShowRtxError(UiText(IsEnglish(),
-            L"找不到 MiraViewHdrPreview.exe；請重新安裝完整版本。",
-            L"MiraViewHdrPreview.exe is missing; reinstall the complete package."));
-        return;
-    }
     if (!std::filesystem::exists(applicationDirectory / L"nvngx_vsr.dll") ||
         !std::filesystem::exists(applicationDirectory / L"nvngx_truehdr.dll")) {
         ShowRtxError(UiText(IsEnglish(),
@@ -670,19 +728,38 @@ void App::LaunchHdrPreview() {
             L"nvngx_vsr.dll or nvngx_truehdr.dll is missing; reinstall the complete package."));
         return;
     }
-    MONITORINFOEXW monitorInfo{sizeof(MONITORINFOEXW)};
-    GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitorInfo);
-    std::wstring parameters = L"\"" + currentImage_->path + L"\" --monitor \"" +
-        monitorInfo.szDevice + L"\"";
-    if (IsEnglish()) parameters += L" --lang en";
-    const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(
-        window_, L"open", previewPath.c_str(), parameters.c_str(),
-        previewPath.parent_path().c_str(), SW_SHOWNORMAL));
-    if (result <= 32) {
-        ShowRtxError(UiText(IsEnglish(),
-            L"無法啟動 RTX 視訊增強(VSR + HDR)。",
-            L"RTX Video Enhancement (VSR + HDR) could not be started."));
+
+    enhancementEnabled_ = false;
+    enhancementInProgress_ = false;
+    enhancedImage_.reset();
+    showOriginalForComparison_ = false;
+    ++enhancementGeneration_;
+    enhancementWorker_.reset();
+    enhancer_.reset();
+    DiscardRenderTarget();
+
+    auto presenter = std::make_unique<RtxHdrPresenter>();
+    std::wstring error;
+    if (!presenter->Initialize(window_, error)) {
+        presenter.reset();
+        RecreateEnhancementBackend();
+        EnsureRenderTarget();
+        UploadCurrentBitmap();
+        ShowRtxError(error);
+        UpdateMenuChecks();
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
     }
+    hdrPresenter_ = std::move(presenter);
+    hdrEnabled_ = true;
+    hdrLastUsedVsr_ = false;
+    ClampHdrZoom();
+    UpdateWindowTitle();
+    UpdateMenuChecks();
+    SetNotice(UiText(IsEnglish(),
+        L"RTX HDR10 已在 MiraView 主視窗啟用；按 H 可返回一般顯示。",
+        L"RTX HDR10 is active in the MiraView main window; press H to return to normal presentation."), 5000);
+    InvalidateRect(window_, nullptr, FALSE);
 #else
     ShowRtxError(UiText(IsEnglish(),
         L"此版本未包含 NVIDIA RTX Video SDK。",
@@ -690,8 +767,95 @@ void App::LaunchHdrPreview() {
 #endif
 }
 
+void App::DisableHdrMode(const bool restoreSdrBackend) {
+    if (!hdrEnabled_
+#if MIRAVIEW_WITH_RTX
+        && !hdrPresenter_
+#endif
+    ) return;
+#if MIRAVIEW_WITH_RTX
+    if (hdrPresenter_) {
+        hdrPresenter_->Shutdown();
+        hdrPresenter_.reset();
+    }
+#endif
+    hdrEnabled_ = false;
+    hdrLastUsedVsr_ = false;
+    if (restoreSdrBackend) {
+        RecreateEnhancementBackend();
+        EnsureRenderTarget();
+        UploadCurrentBitmap();
+    }
+    UpdateWindowTitle();
+    UpdateMenuChecks();
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void App::SetHdrPreset(const int preset) {
+    hdrPreset_ = std::clamp(preset, 0, 2);
+#if MIRAVIEW_WITH_RTX
+    if (hdrPresenter_) hdrPresenter_->Invalidate();
+#endif
+    UpdateMenuChecks();
+    UpdateWindowTitle();
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+bool App::PaintHdr(std::wstring& error) {
+#if MIRAVIEW_WITH_RTX
+    if (!hdrEnabled_ || !hdrPresenter_) return false;
+    RECT client{};
+    GetClientRect(window_, &client);
+    RECT destination{0, 0, std::max(1L, client.right), std::max(1L, client.bottom)};
+    if (currentImage_) {
+        const D2D1_SIZE_F size = D2D1::SizeF(
+            static_cast<float>(std::max(1L, client.right)),
+            static_cast<float>(std::max(1L, client.bottom)));
+        const D2D1_RECT_F image = ImageRectangle(size);
+        destination = {
+            static_cast<LONG>(std::lround(image.left)),
+            static_cast<LONG>(std::lround(image.top)),
+            static_cast<LONG>(std::lround(image.right)),
+            static_cast<LONG>(std::lround(image.bottom))};
+    }
+    bool usedVsr = false;
+    if (!hdrPresenter_->Render(currentImage_, destination,
+            static_cast<HdrPreset>(hdrPreset_), usedVsr, error)) return false;
+    if (usedVsr != hdrLastUsedVsr_) {
+        hdrLastUsedVsr_ = usedVsr;
+        UpdateWindowTitle();
+    }
+    return true;
+#else
+    error = L"此版本未包含 NVIDIA RTX Video SDK。 / This build does not include NVIDIA RTX Video SDK.";
+    return false;
+#endif
+}
+
+void App::ClampHdrZoom() {
+    if (!hdrEnabled_ || !currentImage_) return;
+    RECT client{};
+    GetClientRect(window_, &client);
+    const D2D1_SIZE_F size = D2D1::SizeF(
+        static_cast<float>(std::max(1L, client.right)),
+        static_cast<float>(std::max(1L, client.bottom)));
+    const float baseScale = BaseScale(size);
+    const float sourceMaximum = static_cast<float>(
+        std::max(currentImage_->width, currentImage_->height));
+    if (baseScale <= 0.0F || sourceMaximum <= 0.0F) return;
+    constexpr float maximumDimension = 7680.0F;
+    const float maximumZoom = maximumDimension / (sourceMaximum * baseScale);
+    zoomFactor_ = std::min(zoomFactor_, std::max(0.02F, maximumZoom));
+}
+
 void App::UploadCurrentBitmap() {
     bitmap_.Reset();
+#if MIRAVIEW_WITH_RTX
+    if (hdrEnabled_) {
+        if (hdrPresenter_) hdrPresenter_->Invalidate();
+        return;
+    }
+#endif
     const auto image = enhancementEnabled_ && enhancedImage_ && !showOriginalForComparison_
         ? enhancedImage_ : currentImage_;
     if (!renderTarget_ || !image || image->pixels.empty()) return;
@@ -708,6 +872,7 @@ void App::SetViewMode(const ViewMode mode) {
     viewMode_ = mode;
     zoomFactor_ = 1.0F;
     pan_ = {0.0F, 0.0F};
+    ClampHdrZoom();
     enhancedImage_.reset();
     ++enhancementGeneration_;
     UploadCurrentBitmap();
@@ -728,6 +893,7 @@ void App::ZoomAt(const float factor, const POINT clientPoint) {
     const float oldScale = CurrentScale(size);
     const float oldZoom = zoomFactor_;
     zoomFactor_ = std::clamp(zoomFactor_ * factor, 0.02F, 50.0F);
+    ClampHdrZoom();
     const float newScale = CurrentScale(size);
     if (oldScale <= 0.0F || std::abs(oldZoom - zoomFactor_) < 0.0001F) return;
     const D2D1_POINT_2F center{size.width * 0.5F, size.height * 0.5F};
@@ -822,7 +988,7 @@ void App::ShowContextMenu(const POINT screenPoint) {
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING | (enhancementEnabled_ ? MF_CHECKED : 0), CommandRtx,
         UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
-    AppendMenuW(menu, MF_STRING, CommandHdrPreview,
+    AppendMenuW(menu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
         UiText(english, L"RTX 視訊增強(VSR + HDR)\tH", L"RTX Video Enhancement (VSR + HDR)\tH"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, CommandExit, UiText(english, L"結束", L"Exit"));
@@ -841,7 +1007,15 @@ void App::UpdateWindowTitle() {
     std::wstring title = ProductName;
     if (!folder_.Empty()) {
         title = folder_.Current().filename().wstring();
-        if (enhancementEnabled_ && enhancedImage_) title += L" [RTX]";
+        if (hdrEnabled_) {
+            static constexpr const wchar_t* chinesePresets[]{L"標準", L"鮮明", L"柔和"};
+            static constexpr const wchar_t* englishPresets[]{L"Standard", L"Vivid", L"Gentle"};
+            title += hdrLastUsedVsr_ ? L" [RTX VSR → HDR10 · " : L" [RTX TrueHDR 10-bit · ";
+            title += IsEnglish() ? englishPresets[hdrPreset_] : chinesePresets[hdrPreset_];
+            title += L"]";
+        } else if (enhancementEnabled_ && enhancedImage_) {
+            title += L" [RTX]";
+        }
         title += L" — " + std::wstring(ProductName);
     }
     SetWindowTextW(window_, title.c_str());
@@ -866,6 +1040,8 @@ void App::LoadSettings() {
     if (wheel >= 0 && wheel <= 1) wheelBehavior_ = static_cast<WheelBehavior>(wheel);
     const int language = GetPrivateProfileIntW(L"ui", L"language", 0, native.c_str());
     if (language >= 0 && language <= 1) language_ = static_cast<UiLanguage>(language);
+    const int hdrPreset = GetPrivateProfileIntW(L"rtx", L"hdrPreset", 0, native.c_str());
+    if (hdrPreset >= 0 && hdrPreset <= 2) hdrPreset_ = hdrPreset;
     const int layoutVersion = GetPrivateProfileIntW(L"settings", L"layoutVersion", 0, native.c_str());
     const int left = GetPrivateProfileIntW(L"window", L"left", INT_MIN, native.c_str());
     const int top = GetPrivateProfileIntW(L"window", L"top", INT_MIN, native.c_str());
@@ -905,6 +1081,7 @@ void App::SaveSettings() const {
     write(L"view", L"mode", static_cast<int>(viewMode_));
     write(L"input", L"wheelBehavior", static_cast<int>(wheelBehavior_));
     write(L"ui", L"language", static_cast<int>(language_));
+    write(L"rtx", L"hdrPreset", hdrPreset_);
     write(L"settings", L"layoutVersion", LayoutSettingsVersion);
 }
 
@@ -931,6 +1108,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         return 1;
     case WM_SIZE:
         if (renderTarget_) renderTarget_->Resize(D2D1::SizeU(LOWORD(lParam), HIWORD(lParam)));
+        if (hdrEnabled_ && wParam != SIZE_MINIMIZED && currentImage_) ClampHdrZoom();
         if (enhancementEnabled_ && wParam != SIZE_MINIMIZED && currentImage_) {
             SetTimer(window_, EnhancementResizeTimer, 250, nullptr);
         }
@@ -950,6 +1128,11 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
     case EnhancementWorker::EnhancementReadyMessage:
         ApplyEnhancementResult();
         return 0;
+#if MIRAVIEW_WITH_RTX
+    case RtxHdrPresenter::FrameReadyMessage:
+        if (hdrEnabled_) InvalidateRect(window_, nullptr, FALSE);
+        return 0;
+#endif
     case WM_DROPFILES: {
         const HDROP drop = reinterpret_cast<HDROP>(wParam);
         wchar_t path[32768]{};
@@ -1023,7 +1206,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case L'O': ShowOpenDialog(); return 0;
         case L'I': showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); return 0;
         case L'R': ToggleEnhancement(); return 0;
-        case L'H': LaunchHdrPreview(); return 0;
+        case L'H': ToggleHdrMode(); return 0;
         case L'M': ToggleMaximized(); return 0;
         case L'C':
             if (enhancementEnabled_ && enhancedImage_ && !showOriginalForComparison_) {
@@ -1069,20 +1252,23 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandFullscreen: ToggleFullscreen(); break;
         case CommandToggleInfo: showInfo_ = !showInfo_; UpdateMenuChecks(); InvalidateRect(window_, nullptr, FALSE); break;
         case CommandRtx: ToggleEnhancement(); break;
-        case CommandHdrPreview: LaunchHdrPreview(); break;
+        case CommandHdr: ToggleHdrMode(); break;
+        case CommandHdrStandard: SetHdrPreset(0); break;
+        case CommandHdrVivid: SetHdrPreset(1); break;
+        case CommandHdrGentle: SetHdrPreset(2); break;
         case CommandWheelNavigate: SetWheelBehavior(WheelBehavior::Navigate); break;
         case CommandWheelZoom: SetWheelBehavior(WheelBehavior::Zoom); break;
         case CommandLanguageChinese: SetLanguage(UiLanguage::TraditionalChinese); break;
         case CommandLanguageEnglish: SetLanguage(UiLanguage::English); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.4.0 (RTX VSR + HDR)\n\n"
+                L"MiraView 0.4.1 (RTX VSR + HDR)\n\n"
                 L"【繁體中文】\n"
                 L"針對漫畫文字與圖片放大的原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR 與 HDR。\n"
                 L"MiraView 由 Mira + View 組成；Mira 取「觀看／令人驚豔」的語感，不是縮寫。\n"
                 L"VSR 會依目前顯示尺寸輸出，最高單邊 7680 像素。\n"
                 L"使用 NVIDIA RTX Video SDK 1.1。\n"
-                L"按 H 可開啟 VSR → TrueHDR 的 10-bit 整合顯示。\n"
+                L"按 H 可在原本主視窗切換 VSR → TrueHDR 10-bit 顯示。\n"
                 L"按 M 將視窗最大化；按 F11 使用無邊框全螢幕。\n"
                 L"RTX 套用後可按住 C 比較原圖。\n"
                 L"本專案不代表受到 NVIDIA 贊助或背書。\n\n"
@@ -1091,7 +1277,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
                 L"MiraView combines Mira—evoking look and wonder—with View; it is not an acronym.\n"
                 L"VSR output follows the current display size, up to 7680 pixels per side.\n"
                 L"Built with NVIDIA RTX Video SDK 1.1.\n"
-                L"Press H for integrated VSR to TrueHDR 10-bit output.\n"
+                L"Press H to toggle VSR to TrueHDR 10-bit output in the original main window.\n"
                 L"Press M to maximize the window or F11 for borderless fullscreen.\n"
                 L"Hold C to compare the original image.\n"
                 L"This project is not sponsored or endorsed by NVIDIA.",
@@ -1119,6 +1305,13 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         return 0;
     case WM_DESTROY:
         cache_.SetNotificationWindow(nullptr);
+#if MIRAVIEW_WITH_RTX
+        if (hdrPresenter_) {
+            hdrPresenter_->Shutdown();
+            hdrPresenter_.reset();
+        }
+#endif
+        hdrEnabled_ = false;
         enhancementWorker_.reset();
         if (mainMenu_) {
             SetMenu(window_, nullptr);
@@ -1127,6 +1320,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
             viewMenu_ = nullptr;
             wheelMenu_ = nullptr;
             rtxMenu_ = nullptr;
+            hdrPresetMenu_ = nullptr;
             languageMenu_ = nullptr;
         }
         PostQuitMessage(0);

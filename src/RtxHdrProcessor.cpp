@@ -147,6 +147,8 @@ bool RtxHdrProcessor::Process(
     if (!Initialize(error)) return false;
     if (source.width == 0 || source.height == 0 || source.pixels.empty() ||
         targetWidth == 0 || targetHeight == 0 ||
+        source.width > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
+        source.height > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         targetWidth > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION ||
         targetHeight > D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION) {
         error = L"TrueHDR 輸入或輸出尺寸無效。 / Invalid TrueHDR dimensions.";

@@ -1,4 +1,4 @@
-MiraView 0.4.0
+MiraView 0.4.1
 ================
 
 繁體中文
@@ -16,8 +16,8 @@ MiraView 是一款針對漫畫文字、線條與一般圖片放大的原生 64 �
 1. 將 MiraView-版本-win-x64.zip 完整解壓縮到同一個資料夾。
 2. 執行 MiraView.exe。
 3. 按 O 開啟圖片、把圖片拖進視窗，或在命令列把圖片路徑傳給 MiraView.exe。
-4. VSR 需要 nvngx_vsr.dll；整合 HDR 顯示另需 MiraViewHdrPreview.exe 與
-   nvngx_truehdr.dll，全部放在 MiraView.exe 的同一個資料夾。
+4. VSR 需要 nvngx_vsr.dll；整合 HDR 顯示另需 nvngx_truehdr.dll，兩者都要
+   放在 MiraView.exe 的同一個資料夾。0.4.1 不再需要獨立 HDR 執行檔。
 
 Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯示警告。
 請只從本專案的官方 GitHub Release 下載；若確認來源正確，可選擇「其他資訊」
@@ -41,18 +41,20 @@ Windows SmartScreen 可能因為此版本尚未使用商業程式碼簽章而顯
 - M：切換視窗最大化，保留標題列、選單與工作列。
 - I：顯示或隱藏資訊列。
 - R：開啟或關閉「RTX VSR 超解析度」。
-- H：開啟「RTX 視訊增強(VSR + HDR)」。
+- H：在原本主視窗開啟或關閉「RTX 視訊增強(VSR + HDR)」。
 - 按住 C：暫時顯示原圖；放開後恢復 RTX VSR 結果。
 - 右鍵：開啟快速功能選單。
 - 從「說明 -> 語言」選擇繁體中文或 English；程式會記住選擇。
 
 VSR + HDR 整合顯示操作
-- VSR Ultra 的 GPU texture 會直接交給 TrueHDR，再輸出 HDR10／Rec.2020。
-- 左右鍵 / Page Up / Page Down / Space / 滾輪：瀏覽同資料夾圖片；程式會預讀
-  前後各 4 張，並對每張圖片重新執行所需的 VSR／TrueHDR 渲染。
-- 可同時開啟多個 MiraView 或 RTX 整合顯示視窗；每個程序使用獨立 NGX
+- 原本的 MiraView 主視窗會由 10-bit HDR10 swap chain 接管，不再另開 HDR 視窗；
+  VSR Ultra 的 GPU texture 會直接交給 TrueHDR，再輸出 HDR10／Rec.2020。
+- 左右鍵 / Page Up / Page Down / Space / 滾輪：瀏覽同資料夾圖片；程式沿用主
+  檢視器前後各 8 張預讀，TrueHDR 在背景處理，快速翻頁只保留最新請求。
+- 可同時開啟多個 MiraView 程序；每個程序使用獨立 NGX
   實例。可同時處理的數量與速度取決於 GPU 負載和顯存。
-- M：視窗最大化；F11：無邊框全螢幕；1：標準；2：鮮明；3：柔和。
+- M：視窗最大化；F11：無邊框全螢幕；1／2／3 保留為原本的檢視尺寸快捷鍵。
+  TrueHDR 強度請從「RTX -> HDR 預設」選擇標準、鮮明或柔和。
 - 必須先在 Windows 顯示器設定中開啟 HDR；程式會選用主視窗所在的 HDR 螢幕。
 
 滑鼠滾輪模式
@@ -72,8 +74,9 @@ RTX Video VSR 使用門檻
 - MiraView 必須實際使用 NVIDIA RTX GPU。雙顯卡筆電請在 Windows 圖形設定或
   NVIDIA App 將 MiraView.exe 設為「高效能」。
 - nvngx_vsr.dll 必須與 MiraView.exe 位於同一資料夾。
-- 整合 HDR 顯示需要 MiraViewHdrPreview.exe、nvngx_truehdr.dll、HDR 顯示器及已開啟的
-  Windows HDR；程式會依螢幕回報亮度設定 400 到 2000 nits。
+- 整合 HDR 顯示需要 nvngx_truehdr.dll、HDR 顯示器及已開啟的 Windows HDR；
+  HDR10 swap chain 已內建於 MiraView.exe，程式會依螢幕回報亮度設定
+  400 到 2000 nits。
 - NVIDIA 控制面板或 NVIDIA App 裡的「影片／視訊增強」不必開啟。MiraView
   直接呼叫 RTX Video SDK；硬體、驅動、runtime 與 RTX GPU 條件仍不可少。
 - 只有圖片需要放大時才會執行 VSR。輸出依目前顯示尺寸計算，4K 顯示可產生
@@ -82,14 +85,14 @@ RTX Video VSR 使用門檻
 不支援 RTX 時
 - 沒有相容 RTX GPU、驅動過舊、HDR 未開啟或必要 DLL 遺失時，程式會顯示
   錯誤對話框並繼續以一般圖片檢視模式運作，不會直接關閉。
-- HDR 使用獨立程序，因此 HDR 初始化失敗不會關閉主 MiraView 視窗；背景 VSR
-  工作也有例外攔截。
+- HDR 與 VSR 都使用背景工作與例外攔截；HDR 初始化或處理失敗時會釋放 HDR10
+  swap chain，在同一個主視窗恢復一般 Direct2D 圖片顯示。
 
 目前限制
 - GIF 與動態 WebP 目前只顯示第一幀。
 - 尚未包含縮圖瀏覽器、資料夾樹、CBZ、雙頁模式與完整 ICC 色彩管理。
-- VSR 與 TrueHDR 已使用同一條 GPU texture 管線；10-bit 輸出目前使用整合顯示視窗。
-- v0.4.1 主要目標是將 HDR 顯示整合回原本的 MiraView 視窗，不再另開視窗。
+- VSR 與 TrueHDR 已使用同一條 GPU texture 管線，10-bit HDR10 輸出也已整合回
+  原本的 MiraView 主視窗。
 - 第一次啟用 RTX 需要初始化 NGX，可能需數秒。
 
 第三方軟體
@@ -116,8 +119,8 @@ Install and start
 2. Run MiraView.exe.
 3. Press O to open an image, drag an image into the window, or pass an image
    path to MiraView.exe on the command line.
-4. VSR requires nvngx_vsr.dll. Integrated HDR output also requires MiraViewHdrPreview.exe
-   and nvngx_truehdr.dll beside MiraView.exe.
+4. VSR requires nvngx_vsr.dll. Integrated HDR also requires nvngx_truehdr.dll;
+   keep both beside MiraView.exe. v0.4.1 no longer needs a separate HDR executable.
 
 Windows SmartScreen may warn because this release does not yet have a commercial
 code-signing certificate. Download only from the official GitHub Release for
@@ -141,22 +144,24 @@ Controls
 - M: Toggle a maximized window while keeping the title bar, menu, and taskbar.
 - I: Show or hide the information bar.
 - R: Enable or disable "RTX VSR Super Resolution."
-- H: Open "RTX Video Enhancement (VSR + HDR)."
+- H: Toggle "RTX Video Enhancement (VSR + HDR)" in the original main window.
 - Hold C: Temporarily show the original image; release it to restore RTX VSR.
 - Right-click: Open the quick action menu.
 - Choose Traditional Chinese or English under Help -> Language. The selection
   is saved automatically.
 
 Integrated VSR + HDR controls
-- The VSR Ultra GPU texture is passed directly to TrueHDR and then to an
-  HDR10/Rec.2020 swap chain.
+- The original MiraView main window is taken over by a 10-bit HDR10 swap chain;
+  no separate HDR window opens. The VSR Ultra GPU texture is passed directly to
+  TrueHDR and then to HDR10/Rec.2020 output.
 - Left/Right, Page Up/Page Down, Space, or the wheel navigates the indexed
-  folder. Four images on either side are prefetched, and each page receives the
-  required VSR/TrueHDR rendering.
-- Multiple MiraView or integrated RTX windows can run at once, each with an
-  independent NGX instance. Practical concurrency and speed depend on GPU load
-  and available VRAM.
-- M: Maximize; F11: Borderless fullscreen; 1: Standard; 2: Vivid; 3: Gentle.
+  folder. The main viewer's eight-image prefetch on either side is reused.
+  TrueHDR runs in the background, and rapid navigation retains only the latest
+  request.
+- Multiple MiraView processes can run at once, each with an independent NGX
+  instance. Practical concurrency and speed depend on GPU load and VRAM.
+- M: Maximize; F11: Borderless fullscreen. Keys 1/2/3 retain the original view
+  size actions. Choose Standard, Vivid, or Gentle under RTX -> HDR preset.
 - Windows HDR must be enabled first. The integrated window uses the HDR display
   containing the main MiraView window.
 
@@ -178,8 +183,9 @@ RTX Video VSR requirements
   high-performance NVIDIA GPU for MiraView.exe in Windows Graphics settings or
   the NVIDIA App.
 - nvngx_vsr.dll must remain beside MiraView.exe.
-- Integrated HDR output requires MiraViewHdrPreview.exe, nvngx_truehdr.dll, an HDR display,
-  and Windows HDR enabled. Reported display luminance is clamped to 400-2000 nits.
+- Integrated HDR output requires nvngx_truehdr.dll, an HDR display, and Windows
+  HDR enabled. The HDR10 swap chain is built into MiraView.exe. Reported display
+  luminance is clamped to 400-2000 nits.
 - The Video Enhancement switch in NVIDIA Control Panel or the NVIDIA App does
   not need to be enabled. MiraView calls the RTX Video SDK directly; compatible
   hardware, driver, runtime, and use of the RTX GPU are still required.
@@ -191,17 +197,16 @@ When RTX is unsupported
 - If no compatible RTX GPU is present, the driver is too old, HDR is disabled,
   or a required DLL is missing, MiraView shows an error dialog and continues in
   normal image-viewing mode instead of closing.
-- HDR runs in a separate process, so HDR initialization failure cannot close the
-  main MiraView window. Background VSR work also has exception handling.
+- HDR and VSR both use background work with exception handling. If HDR
+  initialization or processing fails, MiraView releases the HDR10 swap chain and
+  restores normal Direct2D image viewing in the same main window.
 
 Current limitations
 - GIF and animated WebP currently display only the first frame.
 - Thumbnail browser, folder tree, CBZ, two-page mode, and complete ICC color
   management are not implemented yet.
-- VSR and TrueHDR share one GPU texture pipeline; 10-bit output currently uses
-  the integrated display window while the main viewer remains SDR.
-- The main v0.4.1 goal is to move HDR output into the original MiraView window
-  instead of opening another window.
+- VSR and TrueHDR share one GPU texture pipeline, and 10-bit HDR10 output is now
+  integrated into the original MiraView main window.
 - The first RTX activation initializes NGX and may take several seconds.
 
 Third-party software

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MiraView VERSION 0.4.0 LANGUAGES CXX RC)
+project(MiraView VERSION 0.4.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,6 +61,10 @@ if(EXISTS "${MIRAVIEW_RTX_SDK_ROOT}/include/nvsdk_ngx_helpers_vsr.h"
     target_sources(MiraView PRIVATE
         src/RtxImageEnhancer.cpp
         src/RtxImageEnhancer.h
+        src/RtxHdrProcessor.cpp
+        src/RtxHdrProcessor.h
+        src/RtxHdrPresenter.cpp
+        src/RtxHdrPresenter.h
     )
     target_compile_definitions(MiraView PRIVATE MIRAVIEW_WITH_RTX=1)
     target_include_directories(MiraView SYSTEM PRIVATE "${MIRAVIEW_RTX_SDK_ROOT}/include")
@@ -73,6 +77,9 @@ if(EXISTS "${MIRAVIEW_RTX_SDK_ROOT}/include/nvsdk_ngx_helpers_vsr.h"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/dev/nvngx_vsr.dll,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/rel/nvngx_vsr.dll>"
             "$<TARGET_FILE_DIR:MiraView>/nvngx_vsr.dll"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/dev/nvngx_truehdr.dll,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/rel/nvngx_truehdr.dll>"
+            "$<TARGET_FILE_DIR:MiraView>/nvngx_truehdr.dll"
         VERBATIM
     )
 
@@ -98,44 +105,6 @@ if(EXISTS "${MIRAVIEW_RTX_SDK_ROOT}/include/nvsdk_ngx_helpers_vsr.h"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/dev/nvngx_vsr.dll,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/rel/nvngx_vsr.dll>"
             "$<TARGET_FILE_DIR:MiraViewRtxProbe>/nvngx_vsr.dll"
-        VERBATIM
-    )
-
-    add_executable(MiraViewHdrPreview WIN32
-        src/HdrPreviewMain.cpp
-        src/RtxHdrProcessor.cpp
-        src/RtxHdrProcessor.h
-        src/FolderModel.cpp
-        src/FolderModel.h
-        src/ImageCache.cpp
-        src/ImageCache.h
-        src/WicDecoder.cpp
-        src/WicDecoder.h
-        src/ImageData.h
-        resources/MiraView.rc
-        resources/app.manifest
-        resources/icon/MiraView.ico
-    )
-    target_compile_definitions(MiraViewHdrPreview PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX MIRAVIEW_WITH_RTX=1
-        MIRAVIEW_HDR_PREVIEW=1)
-    target_include_directories(MiraViewHdrPreview PRIVATE "${CMAKE_SOURCE_DIR}/src")
-    target_include_directories(MiraViewHdrPreview SYSTEM PRIVATE "${MIRAVIEW_RTX_SDK_ROOT}/include")
-    target_link_libraries(MiraViewHdrPreview PRIVATE
-        d3d11 dxgi windowscodecs ole32 comdlg32 shell32 shlwapi user32 gdi32
-        "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/lib/Windows/x64/nvsdk_ngx_d_dbg.lib,${MIRAVIEW_RTX_SDK_ROOT}/lib/Windows/x64/nvsdk_ngx_d.lib>"
-    )
-    if(MSVC)
-        target_compile_options(MiraViewHdrPreview PRIVATE /W4 /permissive- /utf-8 /EHsc)
-        target_link_options(MiraViewHdrPreview PRIVATE /MANIFEST:NO)
-    endif()
-    add_custom_command(TARGET MiraViewHdrPreview POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/dev/nvngx_truehdr.dll,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/rel/nvngx_truehdr.dll>"
-            "$<TARGET_FILE_DIR:MiraViewHdrPreview>/nvngx_truehdr.dll"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<IF:$<CONFIG:Debug>,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/dev/nvngx_vsr.dll,${MIRAVIEW_RTX_SDK_ROOT}/bin/Windows/x64/rel/nvngx_vsr.dll>"
-            "$<TARGET_FILE_DIR:MiraViewHdrPreview>/nvngx_vsr.dll"
         VERBATIM
     )
 
@@ -172,9 +141,3 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT M
 set_target_properties(MiraView PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/out"
 )
-
-if(TARGET MiraViewHdrPreview)
-    set_target_properties(MiraViewHdrPreview PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/out"
-    )
-endif()

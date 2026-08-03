@@ -29,8 +29,10 @@ UI 執行緒上傳目前 BGRA 圖片至 Direct2D bitmap
 - `FolderModel`：資料夾索引、格式篩選、自然排序、目前位置。
 - `WicDecoder`：每工作執行緒獨立初始化 COM/WIC、EXIF 方向、統一輸出 premultiplied BGRA。
 - `ImageCache`：優先佇列、背景工作、錯誤狀態、LRU 記憶體上限、鄰近頁固定保留。
-- `App`：Win32 訊息、Direct2D 資源、輸入、檢視狀態與設定。
-- `ImageEnhancer`：增強後端抽象；目前由 `NullImageEnhancer` 明確回報尚未安裝。
+- `App`：Win32 訊息、Direct2D／HDR10 主視窗呈現模式、輸入、檢視狀態與設定。
+- `ImageEnhancer`：SDR VSR 增強後端抽象；沒有 SDK 時由 `NullImageEnhancer` 安全回退。
+- `RtxHdrProcessor`：同一 D3D11 裝置內串接 VSR Ultra 與 TrueHDR texture。
+- `RtxHdrPresenter`：原主視窗 HDR10 swap chain、背景最新請求佇列、螢幕 HDR 驗證與 SDR 回復。
 
 ## 功能發展階段
 
@@ -59,6 +61,7 @@ UI 執行緒上傳目前 BGRA 圖片至 Direct2D bitmap
 - 只在原圖確實小於顯示尺寸時排程超解析度。
 - 目前圖最高優先，下一圖第二優先；快速翻頁取消過時增強。
 - 已完成 R 鍵開關增強，以及按住 C 暫時顯示原圖比較。
+- 0.4.1 已把 10-bit HDR10 swap chain 整合回原本主視窗；TrueHDR 背景佇列只保留最新翻頁請求，`H` 可立即切回 Direct2D。
 - GPU／磁碟結果快取仍待加入，預計以來源雜湊、輸出尺寸、模型與品質作為 key。
 
 ### 0.5 格式與色彩

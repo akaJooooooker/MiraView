@@ -4,6 +4,9 @@
 #include "EnhancementWorker.h"
 #include "ImageCache.h"
 #include "ImageEnhancer.h"
+#if MIRAVIEW_WITH_RTX
+#include "RtxHdrPresenter.h"
+#endif
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -61,7 +64,12 @@ private:
     void RequestEnhancement();
     void ApplyEnhancementResult();
     void ToggleEnhancement();
-    void LaunchHdrPreview();
+    void ToggleHdrMode();
+    void DisableHdrMode(bool restoreSdrBackend = true);
+    void SetHdrPreset(int preset);
+    bool PaintHdr(std::wstring& error);
+    void RecreateEnhancementBackend();
+    void ClampHdrZoom();
     void UploadCurrentBitmap();
     void SetViewMode(ViewMode mode);
     void SetWheelBehavior(WheelBehavior behavior);
@@ -84,11 +92,15 @@ private:
     HMENU viewMenu_ = nullptr;
     HMENU wheelMenu_ = nullptr;
     HMENU rtxMenu_ = nullptr;
+    HMENU hdrPresetMenu_ = nullptr;
     HMENU languageMenu_ = nullptr;
     FolderModel folder_;
     ImageCache cache_;
     std::unique_ptr<ImageEnhancer> enhancer_;
     std::unique_ptr<EnhancementWorker> enhancementWorker_;
+#if MIRAVIEW_WITH_RTX
+    std::unique_ptr<RtxHdrPresenter> hdrPresenter_;
+#endif
     std::shared_ptr<ImageData> currentImage_;
     std::shared_ptr<ImageData> enhancedImage_;
 
@@ -116,6 +128,9 @@ private:
     bool enhancementEnabled_ = false;
     bool enhancementInProgress_ = false;
     bool showOriginalForComparison_ = false;
+    bool hdrEnabled_ = false;
+    bool hdrLastUsedVsr_ = false;
+    int hdrPreset_ = 0;
     std::uint64_t enhancementGeneration_ = 0;
     bool fullscreen_ = false;
     WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};
