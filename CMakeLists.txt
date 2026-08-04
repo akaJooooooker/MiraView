@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(MiraView VERSION 0.4.3 LANGUAGES CXX RC)
+project(MiraView VERSION 0.4.4 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

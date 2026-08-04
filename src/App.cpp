@@ -1143,11 +1143,10 @@ void App::ShowContextMenu(const POINT screenPoint) {
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING | (enhancementEnabled_ ? MF_CHECKED : 0), CommandRtx,
         UiText(english, L"RTX VSR 超解析度\tR", L"RTX VSR Super Resolution\tR"));
+    AppendMenuW(menu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
+        UiText(english, L"RTX 視訊增強(VSR + HDR)\tH",
+            L"RTX Video Enhancement (VSR + HDR)\tH"));
     if (hdrModeMenu) {
-        AppendMenuW(hdrModeMenu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
-            UiText(english, L"啟用 RTX 視訊增強(VSR + HDR)\tH",
-                L"Enable RTX Video Enhancement (VSR + HDR)\tH"));
-        AppendMenuW(hdrModeMenu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(hdrModeMenu, MF_STRING, CommandHdrStandard,
             UiText(english, L"標準", L"Standard"));
         AppendMenuW(hdrModeMenu, MF_STRING, CommandHdrVivid,
@@ -1159,11 +1158,7 @@ void App::ShowContextMenu(const POINT screenPoint) {
             hdrPreset_ == 2 ? CommandHdrGentle : CommandHdrStandard,
             MF_BYCOMMAND);
         AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(hdrModeMenu),
-            UiText(english, L"RTX HDR 模式", L"RTX HDR mode"));
-    } else {
-        AppendMenuW(menu, MF_STRING | (hdrEnabled_ ? MF_CHECKED : 0), CommandHdr,
-            UiText(english, L"RTX 視訊增強(VSR + HDR)\tH",
-                L"RTX Video Enhancement (VSR + HDR)\tH"));
+            UiText(english, L"HDR 模式", L"HDR mode"));
     }
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, CommandExit, UiText(english, L"結束", L"Exit"));
@@ -1484,7 +1479,7 @@ LRESULT App::HandleMessage(const UINT message, const WPARAM wParam, const LPARAM
         case CommandLanguageEnglish: SetLanguage(UiLanguage::English); break;
         case CommandAbout:
             MessageBoxW(window_,
-                L"MiraView 0.4.3 (RTX VSR + HDR)\n\n"
+                L"MiraView 0.4.4 (RTX VSR + HDR)\n\n"
                 L"【繁體中文】\n"
                 L"針對漫畫文字與圖片放大的原生 Windows 圖片檢視器，支援 NVIDIA RTX Video VSR 與 HDR。\n"
                 L"MiraView 由 Mira + View 組成；Mira 取「觀看／令人驚豔」的語感，不是縮寫。\n"
